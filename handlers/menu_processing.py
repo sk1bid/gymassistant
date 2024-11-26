@@ -48,6 +48,8 @@ from kbds.inline import (
 from utils.paginator import Paginator
 from aiogram.types import InputMediaPhoto
 
+WEEK_DAYS_RU = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+
 
 def exercises_in_program(user_exercises: list):
     if user_exercises:
@@ -97,10 +99,27 @@ async def schedule(session: AsyncSession, level: int, menu_name: str, training_d
             orm_get_banner(session, "schedule"),
             orm_get_user_by_id(session, user_id), orm_get_training_day(session, training_day_id)
         )
-        banner_image = InputMediaPhoto(media=banner.image, caption=banner.description)
+
+        today = date.today()
+        year = today.year
+        month = today.month
+        day = today.day
+        trd_list = await orm_get_training_days(session, user_data.actual_program_id)
+        day_of_week_to_id = {td.day_of_week.strip().lower(): td.id for td in trd_list}
+        day_date = date(year, month, day)
+        weekday_index = day_date.weekday()
+        day_of_week_rus = WEEK_DAYS_RU[weekday_index].strip().lower()
+        user_training_day_id = day_of_week_to_id.get(day_of_week_rus)
+        if training_day_id is None:
+            user_trd = await orm_get_training_day(session, user_training_day_id)
+        user_exercises = await orm_get_exercises(session, user_training_day_id)
+
+        banner_image = InputMediaPhoto(media=banner.image,
+                                       caption=f"{user_trd.day_of_week}\n\n"
+                                               f"{exercises_in_program(user_exercises)}")
+
         if user_data.actual_program_id:
-            user_training_days = await orm_get_training_days(session, user_data.actual_program_id)
-            user_exercises = await orm_get_exercises(session, training_day_id)
+
             if user_exercises:
                 first_exercise_id = user_exercises[0].id
             else:
@@ -114,7 +133,7 @@ async def schedule(session: AsyncSession, level: int, menu_name: str, training_d
                                                        f"{exercises_in_program(user_exercises)}")
 
             kbds = get_schedule_btns(level=level, year=year_, month=month_, menu_name=menu_name,
-                                     trd_list=user_training_days, training_day_id=training_day_id,
+                                     trd_list=trd_list, training_day_id=training_day_id,
                                      first_exercise_id=first_exercise_id, active_program=True)
             return banner_image, kbds
         else:
