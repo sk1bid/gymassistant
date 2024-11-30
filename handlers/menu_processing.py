@@ -1,12 +1,9 @@
 from asyncio import gather
-import time  # Добавлено для измерения времени
-import logging  # Добавлено для логирования
-import logging  # Добавлено для логирования
+import time
+import logging
 from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from aiogram.types import InputMediaPhoto
-from aiogram import types
 from database.orm_query import (
     orm_get_program,
     orm_get_programs,
@@ -14,19 +11,13 @@ from database.orm_query import (
     orm_get_training_days,
     orm_get_exercises,
     orm_get_exercise,
-    orm_get_sets,
-    orm_get_set,
-    orm_delete_program,
-    orm_update_set,
     orm_get_banner,
     orm_get_user_by_id,
     orm_add_training_day,
-    orm_get_admin_exercises,
     orm_add_exercise,
     orm_get_admin_exercise,
     orm_get_categories,
     orm_get_admin_exercises_in_category,
-    orm_delete_exercise,
     orm_get_category,
     orm_add_exercise_set,
     orm_get_exercise_sets, orm_turn_on_off_program
@@ -60,7 +51,7 @@ def exercises_in_program(user_exercises: list):
     return caption_text
 
 
-async def main_menu(session: AsyncSession, menu_name: str):
+async def main_menu(session: AsyncSession):
     try:
         banner = await orm_get_banner(session, "main")
         banner_image = InputMediaPhoto(media=banner.image,
@@ -156,7 +147,7 @@ async def schedule(session: AsyncSession, level: int, menu_name: str, training_d
                                caption="Ошибка при загрузке расписания")
 
 
-async def training_process(session: AsyncSession, level: int, menu_name: str, program_id: int, training_day_id: int):
+async def training_process(session: AsyncSession, level: int, training_day_id: int):
     try:
         banner = await orm_get_banner(session, "training_process")
         user_exercises = await orm_get_exercises(session, training_day_id)
@@ -236,11 +227,11 @@ async def program_settings(session: AsyncSession, level: int, training_program_i
 ###################################### Тренировочный день #########################
 async def training_days(session, level: int, training_program_id: int, page: int):
     try:
-        program, training_days_list = await gather(
+        user_program, training_days_list = await gather(
             orm_get_program(session, training_program_id),
             orm_get_training_days(session, training_program_id)
         )
-        user_program = program
+        user_program = user_program
         banner = await orm_get_banner(session, "user_program")
         if not training_days_list:
             for day in ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]:
@@ -263,12 +254,12 @@ async def training_days(session, level: int, training_program_id: int, page: int
             parse_mode='HTML'
         )
 
-        pagination_btns = pages(paginator, program.name)
+        pagination_btns = pages(paginator, user_program.name)
 
         kbds = get_training_day_btns(
             level=level,
             user_program_id=training_program_id,
-            program=program,
+            program=user_program,
             page=page,
             training_day_id=training_day.id,
             pagination_btns=pagination_btns
@@ -361,7 +352,8 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
 
         user_image = InputMediaPhoto(
             media=banner.image,
-            caption=f"<strong>{banner.description + user_program.name}\n\n{caption_text}\n\nУпражнения в категории: {category.name}</strong>",
+            caption=f"<strong>{banner.description + user_program.name}\n\n{caption_text}\n\nУпражнения в категории: "
+                    f"{category.name}</strong>",
         )
         kbds = get_category_exercise_btns(level=level,
                                           program_id=training_program_id,
@@ -426,11 +418,11 @@ async def exercise_settings(session: AsyncSession, level: int, exercise_id: int,
 
 async def get_menu_content(session: AsyncSession, level: int, menu_name: str, training_program_id: int = None,
                            exercise_id: int = None, page: int = None, training_day_id: int = None, user_id: int = None,
-                           category_id: int = None, month: int = None, year: int = None):
+                           category_id: int = None):
     start_time = time.monotonic()  # Время начала
     try:
         if level == 0:
-            return await main_menu(session, menu_name)
+            return await main_menu(session)
         elif level == 1:
             if menu_name == "program":
                 return await programs_catalog(session, level, menu_name, user_id)
@@ -440,7 +432,7 @@ async def get_menu_content(session: AsyncSession, level: int, menu_name: str, tr
                 return await schedule(session, level, menu_name, training_day_id, user_id)
         elif level == 2:
             if menu_name in ["training_process"]:
-                return await training_process(session, level, menu_name, training_program_id, training_day_id)
+                return await training_process(session, level, training_day_id)
             return await program(session, level, training_program_id)
         elif level == 3:
             if menu_name in ["prg_stg", "turn_on_prgm", "turn_off_prgm"] or menu_name.startswith(
@@ -462,7 +454,6 @@ async def get_menu_content(session: AsyncSession, level: int, menu_name: str, tr
             return await show_exercises_in_category(session, level, exercise_id, training_day_id, page, menu_name,
                                                     training_program_id, category_id)
         elif level == 7:
-            # Добавьте обработку уровня 7, если необходимо
             pass
         else:
             logging.warning(f"Неизвестный уровень меню: {level}")
@@ -473,6 +464,6 @@ async def get_menu_content(session: AsyncSession, level: int, menu_name: str, tr
         return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
                                caption="Ошибка при загрузке меню")
     finally:
-        end_time = time.monotonic()  # Время окончания
+        end_time = time.monotonic()
         duration = end_time - start_time
         logging.info(f"get_menu_content для menu_name='{menu_name}', level={level} заняла {duration:.2f} секунд")
