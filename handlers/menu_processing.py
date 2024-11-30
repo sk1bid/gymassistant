@@ -112,7 +112,12 @@ async def schedule(session: AsyncSession, level: int, menu_name: str, training_d
         user_training_day_id = day_of_week_to_id.get(day_of_week_rus)
         if training_day_id is None:
             user_trd = await orm_get_training_day(session, user_training_day_id)
-        user_exercises = await orm_get_exercises(session, user_training_day_id)
+        if training_day_id is None:
+            user_exercises_in_t_day = None
+            user_exercises = await orm_get_exercises(session, user_training_day_id)
+        else:
+            user_exercises = None
+            user_exercises_in_t_day = await orm_get_exercises(session, training_day_id)
 
         banner_image = InputMediaPhoto(media=banner.image,
                                        caption=f"{user_trd.day_of_week}\n\n"
@@ -130,7 +135,7 @@ async def schedule(session: AsyncSession, level: int, menu_name: str, training_d
             if menu_name == "t_day":
                 banner_image = InputMediaPhoto(media=banner.image,
                                                caption=f"{user_trd.day_of_week}\n\n"
-                                                       f"{exercises_in_program(user_exercises)}")
+                                                       f"{exercises_in_program(user_exercises_in_t_day)}")
 
             kbds = get_schedule_btns(level=level, year=year_, month=month_, menu_name=menu_name,
                                      trd_list=trd_list, training_day_id=training_day_id,
