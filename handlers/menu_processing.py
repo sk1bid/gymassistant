@@ -89,15 +89,17 @@ async def schedule(session: AsyncSession, level: int, menu_name: str, training_d
             orm_get_banner(session, "schedule"),
             orm_get_user_by_id(session, user_id)
         )
-
-        if user_data.actual_program_id:
+        user_program = user_data.actual_program_id
+        if user_program:
             today = date.today()
             trd_list = await orm_get_training_days(session, user_data.actual_program_id)
             day_of_week_to_id = {td.day_of_week.strip().lower(): td.id for td in trd_list}
-
-            # Получаем тренировочный день
+            weekday_index = today.weekday()
+            day_of_week_rus = WEEK_DAYS_RU[weekday_index].strip().lower()
+            user_training_day_id = day_of_week_to_id.get(day_of_week_rus)
+            if training_day_id is None:
+                training_day_id = user_training_day_id
             user_trd = await orm_get_training_day(session, training_day_id)
-
             # Проверяем, найден ли тренировочный день
             if user_trd is None:
                 banner_image = InputMediaPhoto(
@@ -111,8 +113,8 @@ async def schedule(session: AsyncSession, level: int, menu_name: str, training_d
                     menu_name=menu_name,
                     training_day_id=training_day_id,
                     first_exercise_id=None,
-                    active_program=True,
-                    day_of_week_to_id=day_of_week_to_id  # Передаем словарь
+                    active_program=user_program,
+                    day_of_week_to_id=day_of_week_to_id,  # Передаем словарь
                 )
                 return banner_image, kbds
 
@@ -138,7 +140,7 @@ async def schedule(session: AsyncSession, level: int, menu_name: str, training_d
                 menu_name=menu_name,
                 training_day_id=training_day_id,
                 first_exercise_id=first_exercise_id,
-                active_program=True,
+                active_program=user_program,
                 day_of_week_to_id=day_of_week_to_id  # Передаем словарь
             )
 
@@ -155,7 +157,7 @@ async def schedule(session: AsyncSession, level: int, menu_name: str, training_d
                 menu_name=menu_name,
                 training_day_id=None,
                 first_exercise_id=None,
-                active_program=False
+                active_program=None,
             )
             return banner_image, kbds
 

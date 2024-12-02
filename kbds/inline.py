@@ -81,16 +81,15 @@ def get_profile_btns(*, level: int, sizes: tuple[int] = (1,)):
 
 
 def get_schedule_btns(
-    *,
-    level: int,
-    menu_name: str,
-    year: int | None = None,
-    month: int | None = None,
-    training_day_id: int | None = None,
-    first_exercise_id: int | None = None,
-    active_program: bool | None = None,
-    user_training_day_id: int | None = None,
-    day_of_week_to_id: dict[str, int] | None = None  # Добавили этот параметр
+        *,
+        level: int,
+        menu_name: str,
+        year: int | None = None,
+        month: int | None = None,
+        training_day_id: int | None = None,
+        first_exercise_id: int | None = None,
+        active_program: int | None = None,
+        day_of_week_to_id: dict[str, int] | None = None  # Добавили этот параметр
 ):
     keyboard = InlineKeyboardBuilder()
     if active_program:
@@ -219,7 +218,8 @@ def get_schedule_btns(
             callback_data=MenuCallBack(
                 level=4,
                 menu_name="edit_trd",
-                training_day_id=training_day_id
+                training_day_id=training_day_id,
+                program_id=active_program,
             ).pack()
         )
 
@@ -243,7 +243,6 @@ def get_schedule_btns(
         )
         keyboard.row(back_button, add_program)
     return keyboard.as_markup()
-
 
 
 def get_training_process_btns(*, level: int, training_day_id: int):
