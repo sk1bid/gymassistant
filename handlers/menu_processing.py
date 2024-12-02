@@ -1,6 +1,6 @@
 from asyncio import gather
-import time
-import logging
+import time  # Добавлено для измерения времени
+import logging  # Добавлено для логирования
 from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -352,8 +352,8 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
 
         user_image = InputMediaPhoto(
             media=banner.image,
-            caption=f"<strong>{banner.description + user_program.name}\n\n{caption_text}\n\nУпражнения в категории: "
-                    f"{category.name}</strong>",
+            caption=f"<strong>{banner.description + user_program.name}\n\n{caption_text}\n\n"
+                    f"Упражнения в категории: {category.name}</strong>",
         )
         kbds = get_category_exercise_btns(level=level,
                                           program_id=training_program_id,
@@ -418,8 +418,8 @@ async def exercise_settings(session: AsyncSession, level: int, exercise_id: int,
 
 async def get_menu_content(session: AsyncSession, level: int, menu_name: str, training_program_id: int = None,
                            exercise_id: int = None, page: int = None, training_day_id: int = None, user_id: int = None,
-                           category_id: int = None):
-    start_time = time.monotonic()  # Время начала
+                           category_id: int = None, month: int = None, year: int = None):
+    start_time = time.monotonic()
     try:
         if level == 0:
             return await main_menu(session)

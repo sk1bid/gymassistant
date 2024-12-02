@@ -82,16 +82,12 @@ def get_profile_btns(*, level: int, sizes: tuple[int] = (1,)):
 
 def get_schedule_btns(*, level: int, menu_name: str, year: int | None = None, month: int | None = None,
                       trd_list: list | None = None, training_day_id: int | None = None,
-                      first_exercise_id: int | None = None, active_program: bool | None = None):
+                      first_exercise_id: int | None = None, active_program: bool | None = None,
+                      user_training_day_id: int | None = None):
     keyboard = InlineKeyboardBuilder()
     if active_program:
 
         today = date.today()
-
-        # Создаём словарь: день недели (нижний регистр без пробелов) -> id тренировочного дня
-        day_of_week_to_id = {td.day_of_week.strip().lower(): td.id for td in trd_list}
-        # Заголовок с названием месяца и года на английском языке
-        # Если нужно на русском, можно использовать список русских названий месяцев
         MONTH_NAMES_RU = [
             "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
             "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
@@ -102,7 +98,6 @@ def get_schedule_btns(*, level: int, menu_name: str, year: int | None = None, mo
             callback_data="month_header"
         )
 
-        # Кнопки дней недели (русские названия)
         weekday = [
             InlineKeyboardButton(
                 text=day_ru,
@@ -116,7 +111,6 @@ def get_schedule_btns(*, level: int, menu_name: str, year: int | None = None, mo
         if menu_name == "schedule":
             keyboard.row(month_header)
             keyboard.row(*weekday)
-            # Показываем только текущую неделю
             current_week = None
             if today.year == year and today.month == month:
                 for week in calendar_days:
@@ -141,10 +135,6 @@ def get_schedule_btns(*, level: int, menu_name: str, year: int | None = None, mo
                         continue
 
                     day_date = date(year, month, day)
-                    weekday_index = day_date.weekday()
-                    day_of_week_rus = WEEK_DAYS_RU[weekday_index].strip().lower()
-
-                    user_training_day_id = day_of_week_to_id.get(day_of_week_rus)
 
                     if day_date == today:
                         day_name = '🔘'
