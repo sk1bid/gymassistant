@@ -35,7 +35,7 @@ from database.orm_query import (
     orm_add_set,
     orm_update_set,
     orm_get_set,
-    orm_get_sets, orm_turn_on_off_program, orm_get_programs, orm_get_sets_by_session,
+    orm_get_sets, orm_turn_on_off_program, orm_get_programs, orm_get_sets_by_session, orm_add_training_day,
 )
 
 from handlers.menu_processing import get_menu_content
@@ -204,17 +204,19 @@ async def add_training_program_name(message: types.Message, state: FSMContext, s
 
     await state.update_data(user_id=user_id, name=message.text)
     data = await state.get_data()
-    user_data = await orm_get_user_by_id(session, message.from_user.id)
 
     try:
         training_program_for_change = data.get('training_program_for_change')
+        user_programs = await orm_get_programs(session, user_id)
         if training_program_for_change:
+
             await orm_update_program(session, training_program_for_change.id, data)
         else:
             await orm_add_program(session, data)
-            if not user_data.actual_program_id:
-                user_programs = await orm_get_programs(session, user_id)
-                await orm_turn_on_off_program(session, user_id, user_programs[-1].id)
+            user_programs = await orm_get_programs(session, user_id)
+            await orm_turn_on_off_program(session, user_id, user_programs[-1].id)
+        for day in ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]:
+            await orm_add_training_day(session, day_of_week=day, program_id=user_programs[-1].id)
     except Exception as e:
         logging.exception(f"Ошибка при добавлении программы: {e}")
         await message.answer(f"Ошибка: \n{str(e)}\nОбратитесь к администратору.")
@@ -328,7 +330,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
 
         elif callback_data.menu_name == "prgm_del":
             await orm_delete_program(session, callback_data.program_id)
-            await orm_turn_on_off_program(session, callback.message.from_user.id, None)
+            await orm_turn_on_off_program(session, callback.from_user.id, None)
             await state.update_data(selected_program_id=None)
 
             media, reply_markup = await get_menu_content(

@@ -83,68 +83,89 @@ async def profile(session: AsyncSession, level: int, menu_name: str, user_id: in
                                caption="Ошибка при загрузке профиля")
 
 
-async def schedule(session: AsyncSession, level: int, menu_name: str, training_day_id: int,
-                   user_id: int):
+async def schedule(session: AsyncSession, level: int, menu_name: str, training_day_id: int, user_id: int):
     try:
-        banner, user_data, user_trd = await gather(
+        banner, user_data = await gather(
             orm_get_banner(session, "schedule"),
-            orm_get_user_by_id(session, user_id), orm_get_training_day(session, training_day_id)
+            orm_get_user_by_id(session, user_id)
         )
 
-        today = date.today()
-        year = today.year
-        month = today.month
-        day = today.day
-        trd_list = await orm_get_training_days(session, user_data.actual_program_id)
-        day_of_week_to_id = {td.day_of_week.strip().lower(): td.id for td in trd_list}
-        day_date = date(year, month, day)
-        weekday_index = day_date.weekday()
-        day_of_week_rus = WEEK_DAYS_RU[weekday_index].strip().lower()
-        user_training_day_id = day_of_week_to_id.get(day_of_week_rus)
-        if training_day_id is None:
-            user_trd = await orm_get_training_day(session, user_training_day_id)
-        if training_day_id is None:
-            user_exercises_in_t_day = None
-            user_exercises = await orm_get_exercises(session, user_training_day_id)
-        else:
-            user_exercises = None
-            user_exercises_in_t_day = await orm_get_exercises(session, training_day_id)
-
-        banner_image = InputMediaPhoto(media=banner.image,
-                                       caption=f"{user_trd.day_of_week}\n\n"
-                                               f"{exercises_in_program(user_exercises)}")
-
         if user_data.actual_program_id:
+            today = date.today()
+            trd_list = await orm_get_training_days(session, user_data.actual_program_id)
+            day_of_week_to_id = {td.day_of_week.strip().lower(): td.id for td in trd_list}
 
-            if user_exercises:
-                first_exercise_id = user_exercises[0].id
+            # Получаем тренировочный день
+            user_trd = await orm_get_training_day(session, training_day_id)
+
+            # Проверяем, найден ли тренировочный день
+            if user_trd is None:
+                banner_image = InputMediaPhoto(
+                    media=banner.image,
+                    caption="Тренировочный день не найден."
+                )
+                kbds = get_schedule_btns(
+                    level=level,
+                    year=today.year,
+                    month=today.month,
+                    menu_name=menu_name,
+                    training_day_id=training_day_id,
+                    first_exercise_id=None,
+                    active_program=True,
+                    day_of_week_to_id=day_of_week_to_id  # Передаем словарь
+                )
+                return banner_image, kbds
+
+            # Получаем упражнения для тренировочного дня
+            user_exercises = await orm_get_exercises(session, training_day_id)
+
+            if not user_exercises:
+                exercises_caption = "Нет упражнений на сегодня."
             else:
-                first_exercise_id = None
+                exercises_caption = exercises_in_program(user_exercises)
 
-            year_ = date.today().year
-            month_ = date.today().month
-            if menu_name == "t_day":
-                banner_image = InputMediaPhoto(media=banner.image,
-                                               caption=f"{user_trd.day_of_week}\n\n"
-                                                       f"{exercises_in_program(user_exercises_in_t_day)}")
+            banner_image = InputMediaPhoto(
+                media=banner.image,
+                caption=f"{user_trd.day_of_week}\n\n{exercises_caption}"
+            )
 
-            kbds = get_schedule_btns(level=level, year=year_, month=month_, menu_name=menu_name,
-                                     trd_list=trd_list, training_day_id=training_day_id,
-                                     first_exercise_id=first_exercise_id, active_program=True)
+            first_exercise_id = user_exercises[0].id if user_exercises else None
+
+            kbds = get_schedule_btns(
+                level=level,
+                year=today.year,
+                month=today.month,
+                menu_name=menu_name,
+                training_day_id=training_day_id,
+                first_exercise_id=first_exercise_id,
+                active_program=True,
+                day_of_week_to_id=day_of_week_to_id  # Передаем словарь
+            )
+
             return banner_image, kbds
         else:
-            banner_image = InputMediaPhoto(media=banner.image,
-                                           caption=f"{banner.description}"
-                                                   f"\n\nНе обнаружена программа тренировок\nСоздайте её прямо сейчас!")
-            kbds = get_schedule_btns(level=level, year=None, month=None, menu_name=menu_name,
-                                     trd_list=None, training_day_id=None,
-                                     first_exercise_id=None, active_program=False)
+            banner_image = InputMediaPhoto(
+                media=banner.image,
+                caption=f"{banner.description}\n\nНе обнаружена программа тренировок\nСоздайте её прямо сейчас!"
+            )
+            kbds = get_schedule_btns(
+                level=level,
+                year=None,
+                month=None,
+                menu_name=menu_name,
+                training_day_id=None,
+                first_exercise_id=None,
+                active_program=False
+            )
             return banner_image, kbds
 
     except Exception as e:
         logging.exception(f"Ошибка в schedule: {e}")
-        return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                               caption="Ошибка при загрузке расписания")
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке расписания"
+        )
+        return error_image, None
 
 
 async def training_process(session: AsyncSession, level: int, training_day_id: int):
@@ -233,10 +254,6 @@ async def training_days(session, level: int, training_program_id: int, page: int
         )
         user_program = user_program
         banner = await orm_get_banner(session, "user_program")
-        if not training_days_list:
-            for day in ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]:
-                await orm_add_training_day(session, day_of_week=day, program_id=training_program_id)
-            training_days_list = await orm_get_training_days(session, training_program_id)
 
         paginator = Paginator(training_days_list, page=page)
         training_day = paginator.get_page()[0]

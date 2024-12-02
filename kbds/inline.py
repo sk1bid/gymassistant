@@ -80,25 +80,38 @@ def get_profile_btns(*, level: int, sizes: tuple[int] = (1,)):
     ).adjust(*sizes).as_markup()
 
 
-def get_schedule_btns(*, level: int, menu_name: str, year: int | None = None, month: int | None = None,
-                      trd_list: list | None = None, training_day_id: int | None = None,
-                      first_exercise_id: int | None = None, active_program: bool | None = None,
-                      user_training_day_id: int | None = None):
+def get_schedule_btns(
+    *,
+    level: int,
+    menu_name: str,
+    year: int | None = None,
+    month: int | None = None,
+    training_day_id: int | None = None,
+    first_exercise_id: int | None = None,
+    active_program: bool | None = None,
+    user_training_day_id: int | None = None,
+    day_of_week_to_id: dict[str, int] | None = None  # Добавили этот параметр
+):
     keyboard = InlineKeyboardBuilder()
     if active_program:
-
         today = date.today()
         MONTH_NAMES_RU = [
             "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
             "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
         ]
+
+        # Проверяем, что year и month не None
+        if year is None or month is None:
+            year = today.year
+            month = today.month
+
         month_year = f"{MONTH_NAMES_RU[month - 1]} {year}"
         month_header = InlineKeyboardButton(
             text=month_year,
             callback_data="month_header"
         )
 
-        weekday = [
+        weekday_buttons = [
             InlineKeyboardButton(
                 text=day_ru,
                 callback_data=f"weekday_{day_ru}"
@@ -110,7 +123,7 @@ def get_schedule_btns(*, level: int, menu_name: str, year: int | None = None, mo
 
         if menu_name == "schedule":
             keyboard.row(month_header)
-            keyboard.row(*weekday)
+            keyboard.row(*weekday_buttons)
             current_week = None
             if today.year == year and today.month == month:
                 for week in calendar_days:
@@ -124,52 +137,73 @@ def get_schedule_btns(*, level: int, menu_name: str, year: int | None = None, mo
             weeks_to_process = None
         else:
             keyboard.row(month_header)
-            keyboard.row(*weekday)
+            keyboard.row(*weekday_buttons)
             weeks_to_process = calendar_days
+
         if weeks_to_process:
             for week_num, week in enumerate(weeks_to_process, start=1):
                 week_buttons = []
                 for day in week:
                     if day == 0:
-                        week_buttons.append(InlineKeyboardButton(text=' ', callback_data='empty'))
+                        week_buttons.append(
+                            InlineKeyboardButton(text=' ', callback_data='empty')
+                        )
                         continue
 
                     day_date = date(year, month, day)
 
+                    # Определяем название дня
                     if day_date == today:
                         day_name = '🔘'
                     else:
                         day_name = str(day)
 
-                    callback = MenuCallBack(
-                        level=level,
-                        menu_name='t_day',
-                        training_day_id=user_training_day_id,
-                    ).pack()
+                    # Получаем индекс дня недели
+                    day_of_week_index = day_date.weekday()
+                    day_of_week_ru = WEEK_DAYS_RU[day_of_week_index].strip().lower()
+
+                    # Используем переданный словарь для получения training_day_id
+                    day_training_day_id = day_of_week_to_id.get(day_of_week_ru)
+
+                    # Проверяем наличие training_day_id
+                    if day_training_day_id is None:
+                        # Если тренировочного дня нет, делаем кнопку неактивной или с другим callback_data
+                        callback_data = 'no_training_day'
+                    else:
+                        callback_data = MenuCallBack(
+                            level=level,
+                            menu_name='t_day',
+                            training_day_id=day_training_day_id
+                        ).pack()
 
                     week_buttons.append(
                         InlineKeyboardButton(
                             text=day_name,
-                            callback_data=callback
+                            callback_data=callback_data
                         )
                     )
                 keyboard.row(*week_buttons)
 
-        # Кнопки навигации
+        # Остальная часть функции без изменений
         back_button = InlineKeyboardButton(
             text="Назад",
             callback_data=MenuCallBack(level=level - 1, menu_name='main').pack()
         )
-        back_button_1 = InlineKeyboardButton(
+        back_button_same_level = InlineKeyboardButton(
             text="Назад",
             callback_data=MenuCallBack(level=level, menu_name='schedule').pack()
         )
 
         start_training = InlineKeyboardButton(
             text="Начать тренировку",
-            callback_data=MenuCallBack(level=level + 1, menu_name="training_process",
-                                       training_day_id=training_day_id, exercise_id=first_exercise_id).pack()
+            callback_data=MenuCallBack(
+                level=level + 1,
+                menu_name="training_process",
+                training_day_id=training_day_id,
+                exercise_id=first_exercise_id
+            ).pack()
         )
+
         roll_up = InlineKeyboardButton(
             text="Свернуть календарь",
             callback_data=MenuCallBack(level=level, menu_name='schedule').pack()
@@ -179,13 +213,23 @@ def get_schedule_btns(*, level: int, menu_name: str, year: int | None = None, mo
             text="Развернуть календарь",
             callback_data=MenuCallBack(level=level, menu_name='month_schedule').pack()
         )
+
+        add_exercises = InlineKeyboardButton(
+            text="Добавить упражнения",
+            callback_data=MenuCallBack(
+                level=4,
+                menu_name="edit_trd",
+                training_day_id=training_day_id
+            ).pack()
+        )
+
         if menu_name == "schedule":
             keyboard.row(back_button, unwrap)
         elif menu_name.startswith("t_day"):
             if first_exercise_id:
-                keyboard.row(back_button_1, start_training)
+                keyboard.row(back_button_same_level, start_training)
             else:
-                keyboard.row(back_button_1)
+                keyboard.row(back_button_same_level, add_exercises)
         else:
             keyboard.row(back_button, roll_up)
     else:
@@ -199,6 +243,7 @@ def get_schedule_btns(*, level: int, menu_name: str, year: int | None = None, mo
         )
         keyboard.row(back_button, add_program)
     return keyboard.as_markup()
+
 
 
 def get_training_process_btns(*, level: int, training_day_id: int):
