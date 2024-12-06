@@ -89,7 +89,7 @@ def get_schedule_btns(
         training_day_id: int | None = None,
         first_exercise_id: int | None = None,
         active_program: int | None = None,
-        day_of_week_to_id: dict[str, int] | None = None  # Добавили этот параметр
+        day_of_week_to_id: dict[str, int] | None = None
 ):
     keyboard = InlineKeyboardBuilder()
     if active_program:
@@ -224,6 +224,10 @@ def get_schedule_btns(
         )
 
         if menu_name == "schedule":
+            if first_exercise_id:
+                keyboard.row(start_training)
+            else:
+                keyboard.row(add_exercises)
             keyboard.row(back_button, unwrap)
         elif menu_name.startswith("t_day"):
             if first_exercise_id:
@@ -231,6 +235,11 @@ def get_schedule_btns(
             else:
                 keyboard.row(back_button_same_level, add_exercises)
         else:
+            keyboard.row(back_button, roll_up)
+            if first_exercise_id:
+                keyboard.row(start_training)
+            else:
+                keyboard.row(add_exercises)
             keyboard.row(back_button, roll_up)
     else:
         back_button = InlineKeyboardButton(
