@@ -210,12 +210,18 @@ def pages(paginator: Paginator, program_name: str):
     return btns
 
 
-async def program(session: AsyncSession, level: int, training_program_id: int):
+async def program(session: AsyncSession, level: int, training_program_id: int, user_id: int):
     try:
         user_program = await orm_get_program(session, training_program_id)
         banner = await orm_get_banner(session, "user_program")
+        user_data = await orm_get_user_by_id(session, user_id)
+        if user_data.actual_program_id == user_program.id:
+            indicator = "🟢"
+        else:
+            indicator = "🔴"
         banner_image = InputMediaPhoto(media=banner.image,
-                                       caption=f"<strong>{banner.description + user_program.name}</strong>")
+                                       caption=f"<strong>{banner.description + user_program.name + ' ' + indicator}"
+                                               f"</strong>")
         kbds = get_program_btns(level=level, user_program_id=training_program_id)
         return banner_image, kbds
     except Exception as e:
@@ -236,8 +242,13 @@ async def program_settings(session: AsyncSession, level: int, training_program_i
         elif menu_name.split("_")[1] == "off":
             await orm_turn_on_off_program(session, user_id=user_id, program_id=None)
             active_program = False
+        if active_program:
+            indicator = "🟢"
+        else:
+            indicator = "🔴"
         banner_image = InputMediaPhoto(media=banner.image,
-                                       caption=f"<strong>{banner.description + user_program.name}</strong>")
+                                       caption=f"<strong>{banner.description + user_program.name + ' ' + indicator}"
+                                               f"</strong>")
         kbds = get_program_stgs_btns(level=level, user_program_id=training_program_id, menu_name=menu_name,
                                      active_program=active_program)
         return banner_image, kbds
@@ -454,7 +465,7 @@ async def get_menu_content(session: AsyncSession, level: int, menu_name: str, tr
         elif level == 2:
             if menu_name in ["training_process"]:
                 return await training_process(session, level, training_day_id)
-            return await program(session, level, training_program_id)
+            return await program(session, level, training_program_id, user_id)
         elif level == 3:
             if menu_name in ["prg_stg", "turn_on_prgm", "turn_off_prgm"] or menu_name.startswith(
                     "to_del_prgm") or menu_name.startswith("del_prgm"):

@@ -43,7 +43,8 @@ def get_user_main_btns(*, sizes: tuple[int] = (1,)):
     return keyboard.adjust(*sizes).as_markup()
 
 
-def get_user_programs_list(*, level: int, programs: list, active_program_id: int):
+def get_user_programs_list(*, level: int, programs: list, active_program_id: int,
+                           sizes: tuple[int] = (2, 2)):
     keyboard = InlineKeyboardBuilder()
 
     for program in programs:
@@ -51,13 +52,16 @@ def get_user_programs_list(*, level: int, programs: list, active_program_id: int
             indicator = "🟢"
         else:
             indicator = "🔴"
-        keyboard.add(
+        keyboard.row(
             InlineKeyboardButton(
-                text=indicator + program.name,
+                text=indicator + " " + program.name,
                 callback_data=MenuCallBack(level=level + 1, menu_name="program_" + program.name,
                                            program_id=program.id).pack()
             )
         )
+    padding = (-len(programs)) % sizes[0]
+    for _ in range(padding):
+        keyboard.add(InlineKeyboardButton(text="🐈‍⬛", callback_data="empty"))
 
     back_button = InlineKeyboardButton(
         text='⬅️ Назад',
@@ -68,7 +72,7 @@ def get_user_programs_list(*, level: int, programs: list, active_program_id: int
         callback_data="adding_program"
     )
     keyboard.row(back_button, add_program)
-    return keyboard.as_markup()
+    return keyboard.adjust(*sizes).as_markup()
 
 
 def get_profile_btns(*, level: int, sizes: tuple[int] = (1,)):
@@ -185,16 +189,16 @@ def get_schedule_btns(
 
         # Остальная часть функции без изменений
         back_button = InlineKeyboardButton(
-            text="Назад",
+            text="⬅️ Назад",
             callback_data=MenuCallBack(level=level - 1, menu_name='main').pack()
         )
         back_button_same_level = InlineKeyboardButton(
-            text="Назад",
+            text="⬅️ Назад",
             callback_data=MenuCallBack(level=level, menu_name='schedule').pack()
         )
 
         start_training = InlineKeyboardButton(
-            text="Начать тренировку",
+            text="💪 Начать тренировку",
             callback_data=MenuCallBack(
                 level=level + 1,
                 menu_name="training_process",
@@ -204,17 +208,26 @@ def get_schedule_btns(
         )
 
         roll_up = InlineKeyboardButton(
-            text="Свернуть календарь",
+            text="🔽 Свернуть календарь",
             callback_data=MenuCallBack(level=level, menu_name='schedule').pack()
         )
 
         unwrap = InlineKeyboardButton(
-            text="Развернуть календарь",
+            text="⏏ Развернуть календарь",
             callback_data=MenuCallBack(level=level, menu_name='month_schedule').pack()
         )
 
         add_exercises = InlineKeyboardButton(
-            text="Добавить упражнения",
+            text="➕ Добавить упражнения",
+            callback_data=MenuCallBack(
+                level=4,
+                menu_name="shd_add_exrs",
+                training_day_id=training_day_id,
+                program_id=active_program,
+            ).pack()
+        )
+        edit_exercises = InlineKeyboardButton(
+            text="✏️ Редактировать упражнения",
             callback_data=MenuCallBack(
                 level=4,
                 menu_name="shd_add_exrs",
@@ -231,23 +244,23 @@ def get_schedule_btns(
             keyboard.row(back_button, unwrap)
         elif menu_name.startswith("t_day"):
             if first_exercise_id:
-                keyboard.row(back_button_same_level, start_training)
+                keyboard.row(start_training)
+                keyboard.row(back_button_same_level, edit_exercises)
             else:
                 keyboard.row(back_button_same_level, add_exercises)
         else:
-            keyboard.row(back_button, roll_up)
             if first_exercise_id:
-                keyboard.row(start_training)
+                keyboard.row(start_training, edit_exercises)
             else:
                 keyboard.row(add_exercises)
             keyboard.row(back_button, roll_up)
     else:
         back_button = InlineKeyboardButton(
-            text="Назад",
+            text="⬅️ Назад",
             callback_data=MenuCallBack(level=level - 1, menu_name='main').pack()
         )
         add_program = InlineKeyboardButton(
-            text="Добавить программу",
+            text="➕ Добавить программу",
             callback_data=MenuCallBack(level=level, menu_name='program').pack()
         )
         keyboard.row(back_button, add_program)
@@ -257,7 +270,7 @@ def get_schedule_btns(
 def get_training_process_btns(*, level: int, training_day_id: int):
     keyboard = InlineKeyboardBuilder()
     back_button = InlineKeyboardButton(
-        text="Закончить тренировку",
+        text="🏁 Закончить тренировку",
         callback_data=MenuCallBack(level=level - 2, menu_name='finish_training', training_day_id=training_day_id).pack()
     )
     keyboard.row(back_button)
@@ -327,10 +340,11 @@ def get_program_stgs_btns(
                 callback_data=MenuCallBack(level=level, menu_name="to_del_prgm", program_id=user_program_id).pack()
             )
         )
+
         if active_program:
             keyboard.add(
                 InlineKeyboardButton(
-                    text="Отключить программу",
+                    text=f"⭕ Отключить программу",
                     callback_data=MenuCallBack(level=level, menu_name="turn_off_prgm",
                                                program_id=user_program_id).pack()
                 )
@@ -338,7 +352,7 @@ def get_program_stgs_btns(
         else:
             keyboard.add(
                 InlineKeyboardButton(
-                    text="Применить программу",
+                    text=f"✅ Применить программу",
                     callback_data=MenuCallBack(level=level, menu_name="turn_on_prgm", program_id=user_program_id).pack()
                 )
             )
