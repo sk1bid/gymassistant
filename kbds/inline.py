@@ -217,7 +217,7 @@ def get_schedule_btns(
             text="Добавить упражнения",
             callback_data=MenuCallBack(
                 level=4,
-                menu_name="edit_trd",
+                menu_name="shd_add_exrs",
                 training_day_id=training_day_id,
                 program_id=active_program,
             ).pack()
@@ -415,21 +415,32 @@ def get_trd_edit_btns(
         program_id=program_id,
         page=page
     ).pack()
-    back_button = InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback)
-    keyboard.add(back_button)
+    add_callback = MenuCallBack(
+        level=level + 1,
+        menu_name=f"ctgs",
+        program_id=program_id,
+        training_day_id=training_day_id,
+        page=page
+    ).pack()
 
-    keyboard.add(
-        InlineKeyboardButton(
-            text="➕ Добавить упражнение",
-            callback_data=MenuCallBack(
-                level=level + 1,
-                menu_name=f"ctg_{menu_name}",
-                program_id=program_id,
-                training_day_id=training_day_id,
-                page=page
-            ).pack()
-        )
-    )
+    if menu_name == "shd_add_exrs":
+        back_callback = MenuCallBack(
+            level=1,
+            menu_name='t_day',
+            training_day_id=training_day_id,
+            program_id=program_id,
+            page=page
+        ).pack()
+        add_callback = MenuCallBack(
+            level=level + 1,
+            menu_name=f"ctg_{menu_name}",
+            program_id=program_id,
+            training_day_id=training_day_id,
+            page=page
+        ).pack()
+    back_button = InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback)
+    add_button = InlineKeyboardButton(text="➕ Добавить упражнение", callback_data=add_callback)
+    keyboard.add(back_button, add_button)
     if not empty_list:
         keyboard.add(
             InlineKeyboardButton(
@@ -452,6 +463,7 @@ def get_trd_edit_btns(
 def get_category_btns(
         *,
         level: int,
+        menu_name: str,
         program_id: int,
         categories: list,
         page: int,
@@ -469,6 +481,15 @@ def get_category_btns(
             program_id=program_id,
             page=page
         ).pack()
+        if menu_name == "ctg_shd_add_exrs":
+            callback = MenuCallBack(
+                menu_name=f"catg_shd",
+                level=level + 1,
+                category_id=category.id,
+                training_day_id=training_day_id,
+                program_id=program_id,
+                page=page
+            ).pack()
         button_text = f"{category.name} ({count})"
         button = InlineKeyboardButton(text=button_text, callback_data=callback)
         keyboard.add(button)
@@ -484,6 +505,14 @@ def get_category_btns(
         program_id=program_id,
         page=page
     ).pack()
+    if menu_name == "ctg_shd_add_exrs":
+        back_callback = MenuCallBack(
+            level=level - 1,
+            menu_name='shd_add_exrs',
+            training_day_id=training_day_id,
+            program_id=program_id,
+            page=page
+        ).pack()
     back_button = InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback)
     keyboard.row(back_button)
 
@@ -501,6 +530,8 @@ def get_category_exercise_btns(
         sizes: tuple[int] = (2, 2),
 ):
     keyboard = InlineKeyboardBuilder()
+    if menu_name.startswith("add_"):
+        menu_name = menu_name.split("_", 1)[-1]
     for exercise in template_exercises:
         callback = MenuCallBack(
             menu_name=f"add_ex",
@@ -511,6 +542,16 @@ def get_category_exercise_btns(
             program_id=program_id,
             page=page
         ).pack()
+        if menu_name == "catg_shd":
+            callback = MenuCallBack(
+                menu_name=f"add_{menu_name}",
+                level=level,
+                exercise_id=exercise.id,
+                category_id=exercise.category_id,
+                training_day_id=training_day_id,
+                program_id=program_id,
+                page=page
+            ).pack()
         button = InlineKeyboardButton(text=f"➕ {exercise.name}", callback_data=callback)
         keyboard.add(button)
     padding = (-len(template_exercises)) % sizes[0]
@@ -518,11 +559,20 @@ def get_category_exercise_btns(
         keyboard.add(InlineKeyboardButton(text=" ", callback_data="empty"))
     back_callback = MenuCallBack(
         level=level - 1,
-        menu_name=menu_name.split("_")[-1],
+        menu_name=menu_name.split("_", 2)[-1],
         training_day_id=training_day_id,
         program_id=program_id,
         page=page
     ).pack()
+
+    if menu_name == "catg_shd":
+        back_callback = MenuCallBack(
+            level=level - 1,
+            menu_name="ctg_shd_add_exrs",
+            training_day_id=training_day_id,
+            program_id=program_id,
+            page=page
+        ).pack()
     back_button = InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback)
     keyboard.row(back_button)
     return keyboard.adjust(*sizes).as_markup()

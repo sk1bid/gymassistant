@@ -317,7 +317,8 @@ async def edit_training_day(session: AsyncSession, level: int, training_program_
 
 
 ##################################### Добавление упражнения ###############################
-async def show_categories(session: AsyncSession, level: int, training_program_id: int, training_day_id: int, page: int):
+async def show_categories(session: AsyncSession, level: int, training_program_id: int, training_day_id: int, page: int,
+                          menu_name: str):
     try:
         user_exercises = await orm_get_exercises(session, training_day_id)
         categories = await orm_get_categories(session)
@@ -337,6 +338,7 @@ async def show_categories(session: AsyncSession, level: int, training_program_id
             training_day_id=training_day_id,
             page=page,
             categories=categories,
+            menu_name=menu_name,
         )
 
         return user_image, kbds
@@ -465,7 +467,7 @@ async def get_menu_content(session: AsyncSession, level: int, menu_name: str, tr
                 return await edit_exercises(session, level, exercise_id, training_day_id, page, menu_name,
                                             training_program_id)
             else:
-                return await show_categories(session, level, training_program_id, training_day_id, page)
+                return await show_categories(session, level, training_program_id, training_day_id, page, menu_name)
         elif level == 6:
             if menu_name in ["ex_setgs"] or menu_name.startswith("➕") or menu_name.startswith("➖"):
                 return await exercise_settings(session, level, exercise_id, training_day_id, page, menu_name,
