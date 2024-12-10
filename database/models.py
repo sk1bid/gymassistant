@@ -23,11 +23,22 @@ class AdminExercises(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     category_id: Mapped[int] = mapped_column(ForeignKey('exercise_category.id'))
     name: Mapped[str] = mapped_column(String(), unique=True)
-    image: Mapped[str] = mapped_column(String())
     description: Mapped[str] = mapped_column(Text)
 
     exercise_category: Mapped['ExerciseCategory'] = relationship(backref='admin_exercises', lazy='select')
 
+
+class UserExercises(Base):
+    __tablename__ = 'user_exercises'
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey('exercise_category.id'))
+    user_id: Mapped[int] = mapped_column(ForeignKey('user.user_id'))
+    name: Mapped[str] = mapped_column(String())
+    description: Mapped[str] = mapped_column(Text)
+
+    exercise_category: Mapped['ExerciseCategory'] = relationship(backref='user_exercises', lazy='select')
+    user: Mapped['User'] = relationship(backref='user_exercises', lazy='select')
 
 class Banner(Base):
     __tablename__ = 'banner'
@@ -99,7 +110,6 @@ class Exercise(Base):
     description: Mapped[str] = mapped_column(Text)
     base_sets: Mapped[int] = mapped_column(Integer(), default=3)
     base_reps: Mapped[int] = mapped_column(Integer(), default=10)
-    image: Mapped[str] = mapped_column(String(150))
     training_day_id: Mapped[int] = mapped_column(ForeignKey("training_day.id", ondelete='CASCADE'), nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
 

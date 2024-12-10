@@ -4,7 +4,7 @@ from sqlalchemy import select, update, delete, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import User, Banner, TrainingProgram, TrainingDay, Exercise, Set, AdminExercises, ExerciseCategory, \
-    ExerciseSet
+    ExerciseSet, UserExercises
 
 
 ############### Работа с баннерами (информационными страницами) ###############
@@ -123,7 +123,6 @@ async def orm_add_exercise(session: AsyncSession, data: dict, training_day_id: i
         training_day_id=training_day_id,
         name=data['name'],
         description=data['description'],
-        image=data['image'],
         position=max_position + 1
     )
 
@@ -150,8 +149,6 @@ async def orm_update_exercise(session: AsyncSession, exercise_id: int, data: dic
         update_data['name'] = data['name']
     if 'description' in data:
         update_data['description'] = data['description']
-    if 'image' in data:
-        update_data['image'] = data['image']
     if 'reps' in data:
         update_data['base_reps'] = data['reps']
     if 'sets' in data:
@@ -336,7 +333,6 @@ async def orm_add_admin_exercise(session: AsyncSession, data: dict):
     obj = AdminExercises(
         name=data['name'],
         description=data['description'],
-        image=data['image'],
         category_id=int(data["category"]),
     )
     session.add(obj)
@@ -368,7 +364,6 @@ async def orm_update_admin_exercise(session: AsyncSession, admin_exercise_id: in
         .values(
             name=data['name'],
             description=data['description'],
-            image=data['image'],
             category_id=int(data["category"])
         )
     )
@@ -378,6 +373,59 @@ async def orm_update_admin_exercise(session: AsyncSession, admin_exercise_id: in
 
 async def orm_delete_admin_exercise(session: AsyncSession, admin_exercise_id: int):
     query = delete(AdminExercises).where(AdminExercises.id == admin_exercise_id)
+    await session.execute(query)
+    await session.commit()
+
+
+##################################Уникальные упражнения user###############################################
+async def orm_add_user_exercise(session: AsyncSession, data: dict):
+    obj = UserExercises(
+        name=data['name'],
+        description=data['description'],
+        user_id=int(data["user_id"]),
+        category_id=int(data["category_id"]),
+    )
+    session.add(obj)
+    await session.commit()
+
+
+async def orm_get_user_exercise(session: AsyncSession, user_exercise_id: int):
+    query = select(UserExercises).where(UserExercises.id == user_exercise_id)
+    result = await session.execute(query)
+    return result.scalar()
+
+
+async def orm_get_user_exercises(session: AsyncSession, user_id: int):
+    query = select(UserExercises).filter(UserExercises.user_id == user_id)
+    result = await session.execute(query)
+    return result.scalars().all()
+
+
+async def orm_get_user_exercises_in_category(session: AsyncSession, category_id: int, user_id: int):
+    query = ((select(UserExercises)
+              .where(UserExercises.category_id == category_id))
+             .where(UserExercises.user_id == user_id))
+
+    result = await session.execute(query)
+    return result.scalars().all()
+
+
+async def orm_update_user_exercise(session: AsyncSession, user_exercise_id: int, data: dict):
+    query = (
+        update(UserExercises)
+        .where(UserExercises.id == user_exercise_id)
+        .values(
+            name=data['name'],
+            description=data['description'],
+            category_id=int(data["category"])
+        )
+    )
+    await session.execute(query)
+    await session.commit()
+
+
+async def orm_delete_user_exercise(session: AsyncSession, admin_exercise_id: int):
+    query = delete(UserExercises).where(UserExercises.id == admin_exercise_id)
     await session.execute(query)
     await session.commit()
 

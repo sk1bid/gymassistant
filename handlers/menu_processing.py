@@ -1,6 +1,6 @@
 from asyncio import gather
-import time  # Добавлено для измерения времени
-import logging  # Добавлено для логирования
+import time
+import logging
 from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,17 +13,16 @@ from database.orm_query import (
     orm_get_exercise,
     orm_get_banner,
     orm_get_user_by_id,
-    orm_add_training_day,
     orm_add_exercise,
     orm_get_admin_exercise,
     orm_get_categories,
     orm_get_admin_exercises_in_category,
     orm_get_category,
     orm_add_exercise_set,
-    orm_get_exercise_sets, orm_turn_on_off_program
+    orm_get_exercise_sets, orm_turn_on_off_program, orm_get_user_exercises_in_category
 )
 from kbds.inline import (
-    get_user_main_btns,
+    error_btns,
     get_user_programs_list,
     get_training_day_btns,
     get_profile_btns,
@@ -34,7 +33,7 @@ from kbds.inline import (
     get_trd_edit_btns,
     get_program_stgs_btns,
     get_edit_exercise_btns,
-    get_exercise_settings_btns, get_training_process_btns,
+    get_exercise_settings_btns, get_training_process_btns, get_user_main_btns, get_custom_exercise_btns,
 )
 from utils.paginator import Paginator
 from aiogram.types import InputMediaPhoto
@@ -60,9 +59,12 @@ async def main_menu(session: AsyncSession):
         return banner_image, kbds
     except Exception as e:
         logging.exception(f"Ошибка в main_menu: {e}")
-        # Возвращаем сообщение об ошибке или дефолтное значение
-        return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                               caption="Ошибка при загрузке меню")
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке main_menu"
+        )
+        kbds = error_btns()
+        return error_image, kbds
 
 
 async def profile(session: AsyncSession, level: int, menu_name: str, user_id: int):
@@ -79,8 +81,12 @@ async def profile(session: AsyncSession, level: int, menu_name: str, user_id: in
         return banner_image, kbds
     except Exception as e:
         logging.exception(f"Ошибка в profile: {e}")
-        return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                               caption="Ошибка при загрузке профиля")
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке profile"
+        )
+        kbds = error_btns()
+        return error_image, kbds
 
 
 async def schedule(session: AsyncSession, level: int, menu_name: str, training_day_id: int, user_id: int):
@@ -165,9 +171,10 @@ async def schedule(session: AsyncSession, level: int, menu_name: str, training_d
         logging.exception(f"Ошибка в schedule: {e}")
         error_image = InputMediaPhoto(
             media='https://postimg.cc/Ty7d15kq',
-            caption="Ошибка при загрузке расписания"
+            caption="Ошибка при загрузке schedule"
         )
-        return error_image, None
+        kbds = error_btns()
+        return error_image, kbds
 
 
 async def training_process(session: AsyncSession, level: int, training_day_id: int):
@@ -180,8 +187,12 @@ async def training_process(session: AsyncSession, level: int, training_day_id: i
         return banner_image, kbds
     except Exception as e:
         logging.exception(f"Ошибка в training_process: {e}")
-        return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                               caption="Ошибка при загрузке тренировки"), None
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке training_process"
+        )
+        kbds = error_btns()
+        return error_image, kbds
 
 
 async def programs_catalog(session: AsyncSession, level: int, menu_name: str, user_id: int):
@@ -197,8 +208,12 @@ async def programs_catalog(session: AsyncSession, level: int, menu_name: str, us
         return banner_image, kbbs
     except Exception as e:
         logging.exception(f"Ошибка в programs_catalog: {e}")
-        return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                               caption="Ошибка при загрузке программ")
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке programs_catalog"
+        )
+        kbds = error_btns()
+        return error_image, kbds
 
 
 def pages(paginator: Paginator, program_name: str):
@@ -226,8 +241,12 @@ async def program(session: AsyncSession, level: int, training_program_id: int, u
         return banner_image, kbds
     except Exception as e:
         logging.exception(f"Ошибка в program: {e}")
-        return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                               caption="Ошибка при загрузке программы")
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке program"
+        )
+        kbds = error_btns()
+        return error_image, kbds
 
 
 async def program_settings(session: AsyncSession, level: int, training_program_id: int, menu_name: str, user_id: int):
@@ -253,9 +272,13 @@ async def program_settings(session: AsyncSession, level: int, training_program_i
                                      active_program=active_program)
         return banner_image, kbds
     except Exception as e:
-        logging.exception(f"Ошибка в program_settings: {e}")
-        return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                               caption="Ошибка при загрузке настроек программы")
+        logging.exception(f"Ошибка в programs_settings: {e}")
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке programs_settings"
+        )
+        kbds = error_btns()
+        return error_image, kbds
 
 
 ###################################### Тренировочный день #########################
@@ -298,8 +321,12 @@ async def training_days(session, level: int, training_program_id: int, page: int
         return image, kbds
     except Exception as e:
         logging.exception(f"Ошибка в training_days: {e}")
-        return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                               caption="Ошибка при загрузке тренировочных дней")
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке training_days"
+        )
+        kbds = error_btns()
+        return error_image, kbds
 
 
 async def edit_training_day(session: AsyncSession, level: int, training_program_id: int, page: int,
@@ -323,8 +350,12 @@ async def edit_training_day(session: AsyncSession, level: int, training_program_
         return user_image, kbds
     except Exception as e:
         logging.exception(f"Ошибка в edit_training_day: {e}")
-        return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                               caption="Ошибка при редактировании тренировочного дня")
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке edit_training_day"
+        )
+        kbds = error_btns()
+        return error_image, kbds
 
 
 ##################################### Добавление упражнения ###############################
@@ -355,8 +386,12 @@ async def show_categories(session: AsyncSession, level: int, training_program_id
         return user_image, kbds
     except Exception as e:
         logging.exception(f"Ошибка в show_categories: {e}")
-        return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                               caption="Ошибка при загрузке категорий")
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке show_categories"
+        )
+        kbds = error_btns()
+        return error_image, kbds
 
 
 async def show_exercises_in_category(session: AsyncSession, level: int, exercise_id: int, training_day_id: int,
@@ -374,7 +409,6 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
                 await orm_add_exercise(session, {
                     "name": exercise.name,
                     "description": exercise.description,
-                    "image": exercise.image,
                 }, training_day_id)
                 user_exercises = await orm_get_exercises(session, training_day_id)
                 for _ in range(user_exercises[-1].base_sets):
@@ -392,12 +426,16 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
                                           training_day_id=training_day_id,
                                           page=page,
                                           template_exercises=admin_exercises,
-                                          menu_name=menu_name)
+                                          menu_name=menu_name, category_id=category_id)
         return user_image, kbds
     except Exception as e:
         logging.exception(f"Ошибка в show_exercises_in_category: {e}")
-        return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                               caption="Ошибка при загрузке упражнений категории")
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке show_exercises_in_category"
+        )
+        kbds = error_btns()
+        return error_image, kbds
 
 
 ################################## Изменение упражнения ####################################
@@ -419,8 +457,12 @@ async def edit_exercises(session: AsyncSession, level: int, exercise_id: int, tr
         return user_image, kbds
     except Exception as e:
         logging.exception(f"Ошибка в edit_exercises: {e}")
-        return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                               caption="Ошибка при редактировании упражнения")
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке edit_exercises"
+        )
+        kbds = error_btns()
+        return error_image, kbds
 
 
 async def exercise_settings(session: AsyncSession, level: int, exercise_id: int, training_day_id: int,
@@ -442,8 +484,38 @@ async def exercise_settings(session: AsyncSession, level: int, exercise_id: int,
         return user_image, kbds
     except Exception as e:
         logging.exception(f"Ошибка в exercise_settings: {e}")
-        return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                               caption="Ошибка при настройке упражнения")
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке exercise_settings"
+        )
+        kbds = error_btns()
+        return error_image, kbds
+
+
+#################################Пользовательские упражнения##############################
+async def custom_exercises(session: AsyncSession, level: int, training_day_id: int,
+                           page: int, menu_name: str, training_program_id: int, category_id: int, user_id: int):
+    try:
+        custom_user_exercises = await orm_get_user_exercises_in_category(session, category_id, user_id)
+        banner = await orm_get_banner(session, "user_program")
+        user_image = InputMediaPhoto(
+            media=banner.image,
+            caption="<strong>Пользовательские упражнения</strong>\n\n" +
+                    exercises_in_program(custom_user_exercises)
+        )
+
+        kbds = get_custom_exercise_btns(level=level, menu_name=menu_name, program_id=training_program_id, page=page,
+                                        training_day_id=training_day_id, category_id=category_id)
+        return user_image, kbds
+
+    except Exception as e:
+        logging.exception(f"Ошибка в custom_exercises: {e}")
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке custom_exercises"
+        )
+        kbds = error_btns()
+        return error_image, kbds
 
 
 ###################################### Главный обработчик #################################
@@ -486,7 +558,8 @@ async def get_menu_content(session: AsyncSession, level: int, menu_name: str, tr
             return await show_exercises_in_category(session, level, exercise_id, training_day_id, page, menu_name,
                                                     training_program_id, category_id)
         elif level == 7:
-            pass
+            return await custom_exercises(session, level, training_day_id, page, menu_name,
+                                          training_program_id, category_id, user_id)
         else:
             logging.warning(f"Неизвестный уровень меню: {level}")
             return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
@@ -494,7 +567,7 @@ async def get_menu_content(session: AsyncSession, level: int, menu_name: str, tr
     except Exception as e:
         logging.exception(f"Ошибка в get_menu_content: {e}")
         return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                               caption="Ошибка при загрузке меню")
+                               caption="Ошибка при загрузке меню"), error_btns()
     finally:
         end_time = time.monotonic()
         duration = end_time - start_time

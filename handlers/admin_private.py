@@ -76,9 +76,8 @@ async def starring_at_exercise(callback: types.CallbackQuery, session: AsyncSess
     exercise_id = callback.data.split('_')[-1]
     exercise = await orm_get_admin_exercise(session, int(exercise_id))
 
-    await callback.message.answer_photo(
-        exercise.image,
-        caption=f"<strong>{exercise.name}\n</strong>\n{exercise.description}\n",
+    await callback.message.answer(
+        text=f"<strong>{exercise.name}\n</strong>\n{exercise.description}\n",
         reply_markup=get_callback_btns(
             btns={
                 "Удалить": f"delete_{exercise.id}",
@@ -101,7 +100,7 @@ async def delete_exercise_callback(callback: types.CallbackQuery, session: Async
 
 ######################### FSM для добавления/изменения упражнений ###################
 
-class AddExercise(StatesGroup):
+class AddAdminExercise(StatesGroup):
     name = State()
     description = State()
     category_id = State()
@@ -110,10 +109,9 @@ class AddExercise(StatesGroup):
     exercise_for_change = None
 
     texts = {
-        "AddExercise:name": "Введите название упражнения:",
-        "AddExercise:description": "Введите описание упражнения:",
-        "AddExercise:category": "Выберете категорию заново",
-        "AddExercise:image": "Прикрепите изображение упражнения:",
+        "AddAdminExercise:name": "Введите название упражнения:",
+        "AddAdminExercise:description": "Введите описание упражнения:",
+        "AddAdminExercise:category": "Выберете категорию заново",
     }
 
 
@@ -127,85 +125,77 @@ async def change_exercise_callback(
 ):
     exercise_id = callback.data.split("_")[-1]
     exercise_for_change = await orm_get_admin_exercise(session, int(exercise_id))
-    AddExercise.exercise_for_change = exercise_for_change
+    AddAdminExercise.exercise_for_change = exercise_for_change
 
     await callback.answer()
     await callback.message.answer("Введите название упражнения:", reply_markup=types.ReplyKeyboardRemove())
-    await state.set_state(AddExercise.name)
+    await state.set_state(AddAdminExercise.name)
 
 
 @admin_router.message(StateFilter(None), F.text == "Добавить упражнение")
 async def add_exercise(message: types.Message, state: FSMContext):
     await message.answer("Введите название упражнения:", reply_markup=types.ReplyKeyboardRemove())
-    await state.set_state(AddExercise.name)
+    await state.set_state(AddAdminExercise.name)
 
 
-@admin_router.message(StateFilter(AddExercise.name.state, AddExercise.category_id.state, AddExercise.description.state,
-                                  AddExercise.image.state, AddBanner.image), Command("отмена"))
-@admin_router.message(StateFilter(AddExercise.name.state, AddExercise.category_id.state, AddExercise.description.state,
-                                  AddExercise.image.state, AddBanner.image), F.text.casefold() == "отмена")
+@admin_router.message(
+    StateFilter(AddAdminExercise.name.state, AddAdminExercise.category_id.state, AddAdminExercise.description.state,
+                AddBanner.image.state),
+    Command("отмена"))
+@admin_router.message(
+    StateFilter(AddAdminExercise.name.state, AddAdminExercise.category_id.state, AddAdminExercise.description.state,
+                AddBanner.image.state),
+    F.text.casefold() == "отмена")
 async def cancel_handler(message: types.Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer("Действия отменены", reply_markup=ADMIN_KB)
 
 
-@admin_router.message(AddExercise.name, F.text)
+@admin_router.message(AddAdminExercise.name, F.text)
 async def add_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
     await message.answer("Введите описание упражнения")
-    await state.set_state(AddExercise.description)
+    await state.set_state(AddAdminExercise.description)
 
 
-@admin_router.message(AddExercise.description, F.text)
+@admin_router.message(AddAdminExercise.description, F.text)
 async def add_description(message: types.Message, state: FSMContext, session: AsyncSession):
     await state.update_data(description=message.text)
     categories = await orm_get_categories(session)
     btns = {category.name: str(category.id) for category, _ in categories}
     await message.answer("Выберите категорию", reply_markup=get_callback_btns(btns=btns))
-    await state.set_state(AddExercise.category_id)
+    await state.set_state(AddAdminExercise.category_id)
 
 
-@admin_router.callback_query(AddExercise.category_id)
+@admin_router.callback_query(AddAdminExercise.category_id)
 async def category_choice(callback: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     categories = await orm_get_categories(session)
     category_ids = [category.id for category, _ in categories]
     if int(callback.data) in category_ids:
         await callback.answer()
         await state.update_data(category=callback.data)
-        await callback.message.answer("Прикрепите изображение упражнения")
-        await state.set_state(AddExercise.image)
+        data = await state.get_data()
+        try:
+            if AddAdminExercise.exercise_for_change:
+                await orm_update_admin_exercise(session, AddAdminExercise.exercise_for_change.id, data)
+            else:
+                await orm_add_admin_exercise(session, data)
+
+            await callback.message.answer("Упражнение добавлено/изменено", reply_markup=ADMIN_KB)
+            await state.clear()
+        except Exception as e:
+            await callback.message.answer(f"Ошибка: \n{str(e)}\nОбратитесь к администратору.", reply_markup=ADMIN_KB)
+            await state.clear()
+        AddAdminExercise.exercise_for_change = None
     else:
         await callback.message.answer('Выберите категорию из кнопок.')
         await callback.answer()
 
 
 # Ловим любые некорректные действия, кроме нажатия на кнопку выбора категории
-@admin_router.message(AddExercise.category_id)
+@admin_router.message(AddAdminExercise.category_id)
 async def category_choice2(message: types.Message, state: FSMContext):
     await message.answer("'Выберите категорию из кнопок.'")
-
-
-@admin_router.message(AddExercise.image, or_f(F.photo, F.text == "."))
-async def add_image(message: types.Message, state: FSMContext, session: AsyncSession):
-    if message.photo:
-        await state.update_data(image=message.photo[-1].file_id)
-    else:
-        await message.answer("Отправьте фото упражнения")
-        return
-
-    data = await state.get_data()
-    try:
-        if AddExercise.exercise_for_change:
-            await orm_update_admin_exercise(session, AddExercise.exercise_for_change.id, data)
-        else:
-            await orm_add_admin_exercise(session, data)
-
-        await message.answer("Упражнение добавлено/изменено", reply_markup=ADMIN_KB)
-        await state.clear()
-    except Exception as e:
-        await message.answer(f"Ошибка: \n{str(e)}\nОбратитесь к администратору.", reply_markup=ADMIN_KB)
-        await state.clear()
-    AddExercise.exercise_for_change = None
 
 
 ################# Изменение/добавление баннеров ############################

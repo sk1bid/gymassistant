@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 
 from aiogram import F, Router, types
-from aiogram.filters import Command, StateFilter, CommandStart
+from aiogram.filters import Command, StateFilter, CommandStart, or_f
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
@@ -36,10 +36,12 @@ from database.orm_query import (
     orm_update_set,
     orm_get_set,
     orm_get_sets, orm_turn_on_off_program, orm_get_programs, orm_get_sets_by_session, orm_add_training_day,
+    orm_get_admin_exercise, orm_update_admin_exercise, orm_add_admin_exercise, orm_get_categories,
+    orm_update_user_exercise, orm_add_user_exercise, orm_get_user_exercise,
 )
 
 from handlers.menu_processing import get_menu_content
-from kbds.inline import MenuCallBack, get_callback_btns
+from kbds.inline import MenuCallBack, get_callback_btns, get_url_btns, error_btns
 
 user_private_router = Router()
 user_private_router.message.filter(F.chat.type == "private")
@@ -75,6 +77,25 @@ class TrainingProcess(StatesGroup):
     training_for_change = None
 
 
+class AddExercise(StatesGroup):
+    name = State()
+    description = State()
+    category_id = State()
+    program_id = State()
+    training_day_id = State()
+    image = State()
+    user_id = State()
+
+    exercise_for_change = None
+
+    texts = {
+        "AddExercise:name": "Введите название упражнения:",
+        "AddExercise:description": "Введите описание упражнения:",
+        "AddExercise:category": "Выберете категорию заново",
+        "AddExercise:image": "Прикрепите изображение упражнения:",
+    }
+
+
 @user_private_router.message(StateFilter(None), CommandStart())
 async def send_welcome(message: types.Message, state: FSMContext, session: AsyncSession):
     start_time = time.monotonic()
@@ -95,7 +116,11 @@ async def send_welcome(message: types.Message, state: FSMContext, session: Async
 
     except Exception as e:
         logging.exception(f"Ошибка в send_welcome: {e}")
-        await message.answer("Произошла ошибка, попробуйте позже.")
+        btns = {
+            "Написать разработчику": "https://t.me/cg_skbid",
+        }
+        await message.answer("Произошла ошибка, попробуйте позже.",
+                             reply_markup=get_url_btns(btns=btns, sizes=(1,)))
 
     finally:
         end_time = time.monotonic()
@@ -104,11 +129,11 @@ async def send_welcome(message: types.Message, state: FSMContext, session: Async
 
 
 @user_private_router.message(
-    StateFilter(AddUser.name.state, AddUser.weight.state, AddTrainingProgram.name.state),
-    Command("отмена")
+    StateFilter(AddUser.name.state, AddUser.weight.state),
+    Command("cancel")
 )
 @user_private_router.message(
-    StateFilter(AddUser.name.state, AddUser.weight.state, AddTrainingProgram.name.state),
+    StateFilter(AddUser.name.state, AddUser.weight.state),
     F.text.casefold() == "отмена"
 )
 async def cancel_handler(message: types.Message, state: FSMContext) -> None:
@@ -117,35 +142,8 @@ async def cancel_handler(message: types.Message, state: FSMContext) -> None:
         return
 
     await state.clear()
-    await message.answer("Действия отменены")
-
-
-@user_private_router.message(
-    StateFilter(AddUser.name.state, AddUser.weight.state),
-    Command("назад")
-)
-@user_private_router.message(
-    StateFilter(AddUser.name.state, AddUser.weight.state),
-    F.text.casefold() == "назад"
-)
-async def back_step_handler(message: types.Message, state: FSMContext) -> None:
-    current_state = await state.get_state()
-    logging.info(f"Текущее состояние: {current_state}")
-
-    if current_state == AddUser.name.state:
-        await message.answer('Предыдущего шага нет, введите ваше имя или напишите "отмена"')
-        return
-
-    previous_state = None
-    for step in AddUser.__all_states__:
-        if step.state == current_state:
-            if previous_state:
-                await state.set_state(previous_state)
-                await message.answer(f"Ок, вы вернулись к прошлому шагу\n{AddUser.texts.get(previous_state, '')}")
-            else:
-                await message.answer("Вы находитесь на первом шаге.")
-            return
-        previous_state = step.state
+    await message.answer("Действия отменены\n\nЧтобы продолжить регистрацию,"
+                         " воспользуйтесь командой /start")
 
 
 @user_private_router.message(AddUser.name, F.text)
@@ -174,13 +172,16 @@ async def add_weight(message: types.Message, state: FSMContext, session: AsyncSe
 
         await message.answer("Прекрасно, вы зарегистрированы в системе!\nДля навигации используйте интерактивное меню.")
         await state.clear()
+        media, reply_markup = await get_menu_content(session, level=0, menu_name="main")
+        await message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
     except Exception as e:
         logging.exception(f"Ошибка при добавлении пользователя: {e}")
-        await message.answer(f"Ошибка: \n{str(e)}\nОбратитесь к администратору.")
+        btns = {
+            "Написать разработчику": "https://t.me/cg_skbid",
+        }
+        await message.answer("Произошла ошибка, попробуйте позже.",
+                             reply_markup=get_url_btns(btns=btns, sizes=(1,)))
         await state.clear()
-
-    media, reply_markup = await get_menu_content(session, level=0, menu_name="main")
-    await message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
 
 
 #################################### FSM для добавления тренировочной программы ####################################
@@ -190,6 +191,25 @@ async def ask_name(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer("Введите название программы тренировок:")
     await state.set_state(AddTrainingProgram.name)
     await callback.answer()
+
+
+@user_private_router.message(
+    StateFilter(AddTrainingProgram.name.state),
+    Command("cancel")
+)
+@user_private_router.message(
+    StateFilter(AddTrainingProgram.name.state),
+    F.text.casefold() == "отмена"
+)
+async def cancel_handler(message: types.Message, state: FSMContext, session: AsyncSession) -> None:
+    current_state = await state.get_state()
+    if current_state is None:
+        return
+
+    await state.clear()
+    await message.answer("Действия отменены")
+    media, reply_markup = await get_menu_content(session, level=1, menu_name="program", user_id=message.from_user.id)
+    await message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
 
 
 @user_private_router.message(AddTrainingProgram.name, F.text)
@@ -219,7 +239,11 @@ async def add_training_program_name(message: types.Message, state: FSMContext, s
             await orm_add_training_day(session, day_of_week=day, program_id=user_programs[-1].id)
     except Exception as e:
         logging.exception(f"Ошибка при добавлении программы: {e}")
-        await message.answer(f"Ошибка: \n{str(e)}\nОбратитесь к администратору.")
+        btns = {
+            "Написать разработчику": "https://t.me/cg_skbid",
+        }
+        await message.answer("Произошла ошибка, попробуйте позже.",
+                             reply_markup=get_url_btns(btns=btns, sizes=(1,)))
         await state.clear()
         return
 
@@ -257,6 +281,97 @@ async def clicked_btn(callback_data: MenuCallBack, state: FSMContext, selected_i
 
     await callback.message.edit_media(media=media, reply_markup=reply_markup)
     await callback.answer()
+
+
+####################################Добавление собственного упражнения####################################
+@user_private_router.callback_query(StateFilter(None),
+                                    or_f(F.data.startswith("change_u"), F.data == "catg_shd_change"))
+async def change_exercise_callback(
+        callback: types.CallbackQuery, state: FSMContext, session: AsyncSession
+):
+    exercise_id = callback.data.split("_")[-1]
+    ids = callback.data.split("_", 2)[-1]
+    training_day_id = ids.split("_")[0]
+    program_id = ids.split("_")[1]
+    category_id = ids.split("_")[2]
+    await state.update_data(training_day_id=int(training_day_id))
+    await state.update_data(program_id=int(program_id))
+    await state.update_data(category_id=int(category_id))
+    exercise_for_change = await orm_get_user_exercise(session, int(exercise_id))
+    AddExercise.exercise_for_change = exercise_for_change
+    await callback.answer()
+    await callback.message.answer("Введите название упражнения:", reply_markup=types.ReplyKeyboardRemove())
+    await state.set_state(AddExercise.name)
+
+
+@user_private_router.message(
+    StateFilter(AddExercise.name.state, AddExercise.category_id.state, AddExercise.description.state),
+    Command("cancel")
+)
+@user_private_router.message(
+    StateFilter(AddExercise.name.state, AddExercise.category_id.state, AddExercise.description.state),
+    F.text.casefold() == "отмена"
+)
+async def cancel_handler(message: types.Message, state: FSMContext, session: AsyncSession) -> None:
+    current_state = await state.get_state()
+    if current_state is None:
+        return
+
+    await state.clear()
+    media, reply_markup = await get_menu_content(session, level=0, menu_name="main")
+    await message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
+
+
+@user_private_router.callback_query(StateFilter(None), F.data.startswith("add_u_"))
+async def add_exercise(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.answer("Введите название упражнения:", reply_markup=types.ReplyKeyboardRemove())
+    await callback.answer()
+    ids = callback.data.split("_", 2)[-1]
+    training_day_id = ids.split("_")[0]
+    program_id = ids.split("_")[1]
+    category_id = ids.split("_")[2]
+    await state.update_data(training_day_id=int(training_day_id))
+    await state.update_data(program_id=int(program_id))
+    await state.update_data(category_id=int(category_id))
+    await state.set_state(AddExercise.name)
+
+
+@user_private_router.message(AddExercise.name, F.text)
+async def add_name(message: types.Message, state: FSMContext):
+    await state.update_data(name=message.text)
+    user_id = message.from_user.id
+    await state.update_data(user_id=int(user_id))
+    await message.answer("Введите описание упражнения")
+    await state.set_state(AddExercise.description)
+
+
+@user_private_router.message(AddExercise.description)
+async def add_description(message: types.Message, state: FSMContext, session: AsyncSession):
+    await state.update_data(description=message.text)
+    await state.update_data(user_id=message.from_user.id)
+    data = await state.get_data()
+    try:
+        if AddExercise.exercise_for_change:
+            await orm_update_user_exercise(session, AddExercise.exercise_for_change.id, data)
+        else:
+            await orm_add_user_exercise(session, data)
+        await message.answer("Упражнение добавлено/изменено")
+        await state.clear()
+        media, reply_markup = await get_menu_content(session, level=7, menu_name="add_u_exrs", page=1,
+                                                     training_day_id=data["training_day_id"],
+                                                     category_id=data["category_id"],
+                                                     training_program_id=data["program_id"], user_id=data["user_id"],)
+
+        await message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
+    except Exception as e:
+        logging.exception(f"Ошибка при добавлении упражнения: {e}")
+        btns = {
+            "Написать разработчику": "https://t.me/cg_skbid",
+        }
+        await message.answer(f"Ошибка: \n{str(e)}\nОбратитесь к администратору.",
+                             reply_markup=get_url_btns(btns=btns, sizes=(1,)))
+        await state.clear()
+    AddExercise.exercise_for_change = None
 
 
 ########################################################################################################################
@@ -457,7 +572,8 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
             await callback.answer()
     except Exception as e:
         logging.exception(f"Ошибка в обработчике user_menu: {e}")
-        await callback.answer("Произошла ошибка, попробуйте позже.")
+        await callback.message.answer("Произошла ошибка, попробуйте позже.",
+                                      reply_markup=error_btns())
 
     finally:
         end_time = time.monotonic()
@@ -521,7 +637,6 @@ async def process_reps_input(message: types.Message, state: FSMContext):
         await message.delete()
     except Exception as e:
         logging.warning(f"Не удалось удалить сообщение пользователя: {e}")
-
     data = await state.get_data()
     bot_message_id = data.get('bot_message_id')
 
