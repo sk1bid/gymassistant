@@ -40,6 +40,7 @@ class UserExercises(Base):
     exercise_category: Mapped['ExerciseCategory'] = relationship(backref='user_exercises', lazy='select')
     user: Mapped['User'] = relationship(backref='user_exercises', lazy='select')
 
+
 class Banner(Base):
     __tablename__ = 'banner'
 

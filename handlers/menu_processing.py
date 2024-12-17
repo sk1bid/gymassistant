@@ -19,8 +19,11 @@ from database.orm_query import (
     orm_get_admin_exercises_in_category,
     orm_get_category,
     orm_add_exercise_set,
-    orm_get_exercise_sets, orm_turn_on_off_program, orm_get_user_exercises_in_category
+    orm_get_exercise_sets,
+    orm_turn_on_off_program,
+    orm_get_user_exercises_in_category, orm_get_user_exercises
 )
+
 from kbds.inline import (
     error_btns,
     get_user_programs_list,
@@ -33,10 +36,15 @@ from kbds.inline import (
     get_trd_edit_btns,
     get_program_stgs_btns,
     get_edit_exercise_btns,
-    get_exercise_settings_btns, get_training_process_btns, get_user_main_btns, get_custom_exercise_btns,
+    get_exercise_settings_btns,
+    get_training_process_btns,
+    get_user_main_btns,
+    get_custom_exercise_btns,
 )
 from utils.paginator import Paginator
 from aiogram.types import InputMediaPhoto
+
+from utils.separator import get_action_part
 
 WEEK_DAYS_RU = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
 
@@ -67,16 +75,15 @@ async def main_menu(session: AsyncSession):
         return error_image, kbds
 
 
-async def profile(session: AsyncSession, level: int, menu_name: str, user_id: int):
+async def profile(session: AsyncSession, level: int, action: str, user_id: int):
     try:
         banner, user = await gather(
-            orm_get_banner(session, menu_name),
+            orm_get_banner(session, action),
             orm_get_user_by_id(session, user_id)
         )
         banner_image = InputMediaPhoto(media=banner.image,
                                        caption=f"<strong>{banner.description}:\n {user.name} — вес:"
                                                f" {user.weight}</strong>")
-
         kbds = get_profile_btns(level=level)
         return banner_image, kbds
     except Exception as e:
@@ -89,7 +96,7 @@ async def profile(session: AsyncSession, level: int, menu_name: str, user_id: in
         return error_image, kbds
 
 
-async def schedule(session: AsyncSession, level: int, menu_name: str, training_day_id: int, user_id: int):
+async def schedule(session: AsyncSession, level: int, action: str, training_day_id: int, user_id: int):
     try:
         banner, user_data = await gather(
             orm_get_banner(session, "schedule"),
@@ -106,7 +113,7 @@ async def schedule(session: AsyncSession, level: int, menu_name: str, training_d
             if training_day_id is None:
                 training_day_id = user_training_day_id
             user_trd = await orm_get_training_day(session, training_day_id)
-            # Проверяем, найден ли тренировочный день
+
             if user_trd is None:
                 banner_image = InputMediaPhoto(
                     media=banner.image,
@@ -116,17 +123,15 @@ async def schedule(session: AsyncSession, level: int, menu_name: str, training_d
                     level=level,
                     year=today.year,
                     month=today.month,
-                    menu_name=menu_name,
+                    action=action,
                     training_day_id=training_day_id,
                     first_exercise_id=None,
                     active_program=user_program,
-                    day_of_week_to_id=day_of_week_to_id,  # Передаем словарь
+                    day_of_week_to_id=day_of_week_to_id,
                 )
                 return banner_image, kbds
 
-            # Получаем упражнения для тренировочного дня
             user_exercises = await orm_get_exercises(session, training_day_id)
-
             if not user_exercises:
                 exercises_caption = "Нет упражнений на сегодня."
             else:
@@ -143,11 +148,11 @@ async def schedule(session: AsyncSession, level: int, menu_name: str, training_d
                 level=level,
                 year=today.year,
                 month=today.month,
-                menu_name=menu_name,
+                action=action,
                 training_day_id=training_day_id,
                 first_exercise_id=first_exercise_id,
                 active_program=user_program,
-                day_of_week_to_id=day_of_week_to_id  # Передаем словарь
+                day_of_week_to_id=day_of_week_to_id
             )
 
             return banner_image, kbds
@@ -160,7 +165,7 @@ async def schedule(session: AsyncSession, level: int, menu_name: str, training_d
                 level=level,
                 year=None,
                 month=None,
-                menu_name=menu_name,
+                action=action,
                 training_day_id=None,
                 first_exercise_id=None,
                 active_program=None,
@@ -195,10 +200,10 @@ async def training_process(session: AsyncSession, level: int, training_day_id: i
         return error_image, kbds
 
 
-async def programs_catalog(session: AsyncSession, level: int, menu_name: str, user_id: int):
+async def programs_catalog(session: AsyncSession, level: int, action: str, user_id: int):
     try:
         banner, programs = await gather(
-            orm_get_banner(session, menu_name),
+            orm_get_banner(session, action),
             orm_get_programs(session, user_id=user_id)
         )
         user_data = await orm_get_user_by_id(session, user_id)
@@ -230,13 +235,9 @@ async def program(session: AsyncSession, level: int, training_program_id: int, u
         user_program = await orm_get_program(session, training_program_id)
         banner = await orm_get_banner(session, "user_program")
         user_data = await orm_get_user_by_id(session, user_id)
-        if user_data.actual_program_id == user_program.id:
-            indicator = "🟢"
-        else:
-            indicator = "🔴"
+        indicator = "🟢" if user_data.actual_program_id == user_program.id else "🔴"
         banner_image = InputMediaPhoto(media=banner.image,
-                                       caption=f"<strong>{banner.description + user_program.name + ' ' + indicator}"
-                                               f"</strong>")
+                                       caption=f"<strong>{banner.description + user_program.name + ' ' + indicator}</strong>")
         kbds = get_program_btns(level=level, user_program_id=training_program_id)
         return banner_image, kbds
     except Exception as e:
@@ -249,30 +250,31 @@ async def program(session: AsyncSession, level: int, training_program_id: int, u
         return error_image, kbds
 
 
-async def program_settings(session: AsyncSession, level: int, training_program_id: int, menu_name: str, user_id: int):
+async def program_settings(session: AsyncSession, level: int, training_program_id: int, action: str, user_id: int):
     try:
         user_program = await orm_get_program(session, training_program_id)
         user_data = await orm_get_user_by_id(session, user_id)
         active_program = True if user_data.actual_program_id else False
-        banner = await orm_get_banner(session, "user_program")
-        if menu_name.split("_")[1] == "on":
+
+        # Если действия переключают программу
+        if action == "turn_on_prgm":
             await orm_turn_on_off_program(session, user_id=user_id, program_id=training_program_id)
             active_program = True
-        elif menu_name.split("_")[1] == "off":
+        elif action == "turn_off_prgm":
             await orm_turn_on_off_program(session, user_id=user_id, program_id=None)
             active_program = False
-        if active_program:
-            indicator = "🟢"
-        else:
-            indicator = "🔴"
-        banner_image = InputMediaPhoto(media=banner.image,
-                                       caption=f"<strong>{banner.description + user_program.name + ' ' + indicator}"
-                                               f"</strong>")
-        kbds = get_program_stgs_btns(level=level, user_program_id=training_program_id, menu_name=menu_name,
+
+        banner = await orm_get_banner(session, "user_program")
+        indicator = "🟢" if active_program else "🔴"
+        banner_image = InputMediaPhoto(
+            media=banner.image,
+            caption=f"<strong>{banner.description + user_program.name + ' ' + indicator}</strong>"
+        )
+        kbds = get_program_stgs_btns(level=level, user_program_id=training_program_id, action=action,
                                      active_program=active_program)
         return banner_image, kbds
     except Exception as e:
-        logging.exception(f"Ошибка в programs_settings: {e}")
+        logging.exception(f"Ошибка в program_settings: {e}")
         error_image = InputMediaPhoto(
             media='https://postimg.cc/Ty7d15kq',
             caption="Ошибка при загрузке programs_settings"
@@ -281,21 +283,17 @@ async def program_settings(session: AsyncSession, level: int, training_program_i
         return error_image, kbds
 
 
-###################################### Тренировочный день #########################
 async def training_days(session, level: int, training_program_id: int, page: int):
     try:
         user_program, training_days_list = await gather(
             orm_get_program(session, training_program_id),
             orm_get_training_days(session, training_program_id)
         )
-        user_program = user_program
         banner = await orm_get_banner(session, "user_program")
 
         paginator = Paginator(training_days_list, page=page)
         training_day = paginator.get_page()[0]
-
         user_exercises = await orm_get_exercises(session, training_day.id)
-
         caption_text = exercises_in_program(user_exercises)
         image = InputMediaPhoto(
             media=banner.image,
@@ -303,10 +301,8 @@ async def training_days(session, level: int, training_program_id: int, page: int
                 f"<strong>{banner.description + user_program.name}\n\n"
                 f" День {paginator.page} из {paginator.pages} ({training_day.day_of_week})\n\n"
                 f"{caption_text}</strong>"
-            ),
-            parse_mode='HTML'
+            )
         )
-
         pagination_btns = pages(paginator, user_program.name)
 
         kbds = get_training_day_btns(
@@ -330,7 +326,7 @@ async def training_days(session, level: int, training_program_id: int, page: int
 
 
 async def edit_training_day(session: AsyncSession, level: int, training_program_id: int, page: int,
-                            training_day_id: int, menu_name: str):
+                            training_day_id: int, action: str):
     try:
         user_exercises = await orm_get_exercises(session, training_day_id)
         banner = await orm_get_banner(session, "user_program")
@@ -345,7 +341,7 @@ async def edit_training_day(session: AsyncSession, level: int, training_program_
 
         kbds = get_trd_edit_btns(level=level, program_id=training_program_id, page=page,
                                  training_day_id=training_day_id,
-                                 empty_list=empty_list, menu_name=menu_name)
+                                 empty_list=empty_list, action=action)
 
         return user_image, kbds
     except Exception as e:
@@ -358,12 +354,15 @@ async def edit_training_day(session: AsyncSession, level: int, training_program_
         return error_image, kbds
 
 
-##################################### Добавление упражнения ###############################
 async def show_categories(session: AsyncSession, level: int, training_program_id: int, training_day_id: int, page: int,
-                          menu_name: str):
+                          action: str, user_id: int):
     try:
         user_exercises = await orm_get_exercises(session, training_day_id)
+        user_data = await orm_get_user_by_id(session, user_id)
+        user_name = user_data.name
+        user_custom_exercises = await orm_get_user_exercises(session, user_id)
         categories = await orm_get_categories(session)
+
         user_program = await orm_get_program(session, training_program_id)
         banner = await orm_get_banner(session, "user_program")
         caption_text = exercises_in_program(user_exercises)
@@ -380,7 +379,9 @@ async def show_categories(session: AsyncSession, level: int, training_program_id
             training_day_id=training_day_id,
             page=page,
             categories=categories,
-            menu_name=menu_name,
+            action=action,
+            user_name=user_name,
+            len_custom=len(user_custom_exercises),
         )
 
         return user_image, kbds
@@ -395,7 +396,7 @@ async def show_categories(session: AsyncSession, level: int, training_program_id
 
 
 async def show_exercises_in_category(session: AsyncSession, level: int, exercise_id: int, training_day_id: int,
-                                     page: int, menu_name: str, training_program_id: int, category_id):
+                                     page: int, action: str, training_program_id: int, category_id):
     try:
         user_exercises = await orm_get_exercises(session, training_day_id)
         category = await orm_get_category(session, category_id)
@@ -403,16 +404,18 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
         admin_exercises = await orm_get_admin_exercises_in_category(session, category_id)
         banner = await orm_get_banner(session, "user_program")
 
-        if menu_name.startswith("add"):
-            exercise = await orm_get_admin_exercise(session, exercise_id)
-            if exercise:
-                await orm_add_exercise(session, {
-                    "name": exercise.name,
-                    "description": exercise.description,
-                }, training_day_id)
-                user_exercises = await orm_get_exercises(session, training_day_id)
-                for _ in range(user_exercises[-1].base_sets):
-                    await orm_add_exercise_set(session, user_exercises[-1].id, user_exercises[-1].base_reps)
+        # Если action начинается на "add_..." - добавляем упражнение из админских в пользовательский список
+        if get_action_part(action).startswith("add_"):
+            if exercise_id:
+                exercise = await orm_get_admin_exercise(session, exercise_id)
+                if exercise:
+                    await orm_add_exercise(session, {
+                        "name": exercise.name,
+                        "description": exercise.description,
+                    }, training_day_id)
+                    user_exercises = await orm_get_exercises(session, training_day_id)
+                    for _ in range(user_exercises[-1].base_sets):
+                        await orm_add_exercise_set(session, user_exercises[-1].id, user_exercises[-1].base_reps)
 
         caption_text = exercises_in_program(user_exercises)
 
@@ -426,7 +429,7 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
                                           training_day_id=training_day_id,
                                           page=page,
                                           template_exercises=admin_exercises,
-                                          menu_name=menu_name, category_id=category_id)
+                                          action=action, category_id=category_id)
         return user_image, kbds
     except Exception as e:
         logging.exception(f"Ошибка в show_exercises_in_category: {e}")
@@ -438,9 +441,8 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
         return error_image, kbds
 
 
-################################## Изменение упражнения ####################################
 async def edit_exercises(session: AsyncSession, level: int, exercise_id: int, training_day_id: int,
-                         page: int, menu_name: str, training_program_id: int):
+                         page: int, action: str, training_program_id: int):
     try:
         user_exercises = await orm_get_exercises(session, training_day_id)
         banner = await orm_get_banner(session, "user_program")
@@ -451,7 +453,7 @@ async def edit_exercises(session: AsyncSession, level: int, exercise_id: int, tr
 
         kbds = get_edit_exercise_btns(level=level, program_id=training_program_id, user_exercises=user_exercises,
                                       page=page, exercise_id=exercise_id,
-                                      menu_name=menu_name,
+                                      action=action,
                                       training_day_id=training_day_id)
 
         return user_image, kbds
@@ -466,7 +468,7 @@ async def edit_exercises(session: AsyncSession, level: int, exercise_id: int, tr
 
 
 async def exercise_settings(session: AsyncSession, level: int, exercise_id: int, training_day_id: int,
-                            page: int, menu_name: str, training_program_id: int):
+                            page: int, action: str, training_program_id: int):
     try:
         user_exercise = await orm_get_exercise(session, exercise_id)
         banner = await orm_get_banner(session, "user_program")
@@ -476,7 +478,7 @@ async def exercise_settings(session: AsyncSession, level: int, exercise_id: int,
             caption="<strong>Добавьте нужное вам количество подходов и повторений</strong>",
         )
 
-        kbds = get_exercise_settings_btns(level=level, menu_name=menu_name, program_id=training_program_id,
+        kbds = get_exercise_settings_btns(level=level, action=action, program_id=training_program_id,
                                           page=page, exercise_id=exercise_id,
                                           training_day_id=training_day_id, user_exercise=user_exercise,
                                           base_ex_sets=base_ex_sets)
@@ -492,19 +494,30 @@ async def exercise_settings(session: AsyncSession, level: int, exercise_id: int,
         return error_image, kbds
 
 
-#################################Пользовательские упражнения##############################
 async def custom_exercises(session: AsyncSession, level: int, training_day_id: int,
-                           page: int, menu_name: str, training_program_id: int, category_id: int, user_id: int):
+                           page: int, action: str, training_program_id: int, category_id: int, user_id: int):
     try:
         custom_user_exercises = await orm_get_user_exercises_in_category(session, category_id, user_id)
+        if get_action_part(action).startswith("ctg"):
+            custom_user_exercises = await orm_get_user_exercises(session, user_id)
+            banner = await orm_get_banner(session, "user_program")
+            user_image = InputMediaPhoto(
+                media=banner.image,
+                caption="<strong>Пользовательские упражнения</strong>\n\n" +
+                        exercises_in_program(custom_user_exercises)
+            )
+            kbds = get_custom_exercise_btns(level=level, action=action, program_id=training_program_id, page=page,
+                                            training_day_id=training_day_id, category_id=category_id)
+            return user_image, kbds
+        user_category = await orm_get_category(session, category_id)
         banner = await orm_get_banner(session, "user_program")
         user_image = InputMediaPhoto(
             media=banner.image,
-            caption="<strong>Пользовательские упражнения</strong>\n\n" +
+            caption=f"<strong>Пользовательские упражнения ({user_category.name})</strong>\n\n" +
                     exercises_in_program(custom_user_exercises)
         )
 
-        kbds = get_custom_exercise_btns(level=level, menu_name=menu_name, program_id=training_program_id, page=page,
+        kbds = get_custom_exercise_btns(level=level, action=action, program_id=training_program_id, page=page,
                                         training_day_id=training_day_id, category_id=category_id)
         return user_image, kbds
 
@@ -518,57 +531,76 @@ async def custom_exercises(session: AsyncSession, level: int, training_day_id: i
         return error_image, kbds
 
 
-###################################### Главный обработчик #################################
-
-async def get_menu_content(session: AsyncSession, level: int, menu_name: str, training_program_id: int = None,
+async def get_menu_content(session: AsyncSession, level: int, action: str, training_program_id: int = None,
                            exercise_id: int = None, page: int = None, training_day_id: int = None, user_id: int = None,
-                           category_id: int = None, month: int = None, year: int = None):
+                           category_id: int = None, month: int = None, year: int = None, set_id: int = None):
     start_time = time.monotonic()
     try:
+        # В этом коде мы исходим из того, что action теперь используется вместо menu_name.
         if level == 0:
+            # Главный экран
             return await main_menu(session)
+
         elif level == 1:
-            if menu_name == "program":
-                return await programs_catalog(session, level, menu_name, user_id)
-            elif menu_name == "profile":
-                return await profile(session, level, menu_name, user_id)
-            elif menu_name in ["schedule", "month_schedule", "t_day"]:
-                return await schedule(session, level, menu_name, training_day_id, user_id)
+            if action == "program":
+                return await programs_catalog(session, level, action, user_id)
+            elif action == "profile":
+                return await profile(session, level, action, user_id)
+            elif action in ["schedule", "month_schedule", "t_day"]:
+                return await schedule(session, level, action, training_day_id, user_id)
+
         elif level == 2:
-            if menu_name in ["training_process"]:
+            # Программа или процесс тренировки
+            if action == "training_process":
                 return await training_process(session, level, training_day_id)
             return await program(session, level, training_program_id, user_id)
+
         elif level == 3:
-            if menu_name in ["prg_stg", "turn_on_prgm", "turn_off_prgm"] or menu_name.startswith(
-                    "to_del_prgm") or menu_name.startswith("del_prgm"):
-                return await program_settings(session, level, training_program_id, menu_name, user_id)
+            # Настройки программы или дни тренировок
+            if action in ["prg_stg", "turn_on_prgm", "turn_off_prgm"] or action.startswith(
+                    "to_del_prgm") or action.startswith("prgm_del"):
+                return await program_settings(session, level, training_program_id, action, user_id)
             return await training_days(session, level, training_program_id, page)
+
         elif level == 4:
-            return await edit_training_day(session, level, training_program_id, page, training_day_id, menu_name)
+            # Редактирование тренировочного дня
+            return await edit_training_day(session, level, training_program_id, page, training_day_id, action)
+
         elif level == 5:
-            if menu_name.startswith("edit_excs") or menu_name in ["del", "mv"] or menu_name.startswith("to_edit"):
-                return await edit_exercises(session, level, exercise_id, training_day_id, page, menu_name,
+            # Либо редактирование упражнений, либо выбор категории
+            if action in ["edit_excs", "shd/edit_excs", "to_edit", "shd/to_edit",
+                          "del", "shd/del", "mv", "shd/mv"]:
+                return await edit_exercises(session, level, exercise_id, training_day_id, page, action,
                                             training_program_id)
             else:
-                return await show_categories(session, level, training_program_id, training_day_id, page, menu_name)
+                return await show_categories(session, level, training_program_id, training_day_id, page, action,
+                                             user_id)
+
         elif level == 6:
-            if menu_name in ["ex_setgs"] or menu_name.startswith("➕") or menu_name.startswith("➖"):
-                return await exercise_settings(session, level, exercise_id, training_day_id, page, menu_name,
+            # Настройки упражнения или список упражнений в категории
+            if action in ["ex_stg", "shd/ex_stg"] or action.startswith("➕") or action.startswith(
+                    "➖") or action.startswith("shd/➕") or action.startswith("shd/➖"):
+                return await exercise_settings(session, level, exercise_id, training_day_id, page, action,
                                                training_program_id)
-            return await show_exercises_in_category(session, level, exercise_id, training_day_id, page, menu_name,
+            return await show_exercises_in_category(session, level, exercise_id, training_day_id, page, action,
                                                     training_program_id, category_id)
+
         elif level == 7:
-            return await custom_exercises(session, level, training_day_id, page, menu_name,
+            # Пользовательские упражнения
+            return await custom_exercises(session, level, training_day_id, page, action,
                                           training_program_id, category_id, user_id)
+
         else:
             logging.warning(f"Неизвестный уровень меню: {level}")
-            return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                                   caption="Ошибка: неизвестный уровень меню")
+            return (InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
+                                    caption="Ошибка: неизвестный уровень меню"),
+                    error_btns())
     except Exception as e:
         logging.exception(f"Ошибка в get_menu_content: {e}")
-        return InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
-                               caption="Ошибка при загрузке меню"), error_btns()
+        return (InputMediaPhoto(media='https://postimg.cc/Ty7d15kq',
+                                caption="Ошибка при загрузке меню"),
+                error_btns())
     finally:
         end_time = time.monotonic()
         duration = end_time - start_time
-        logging.info(f"get_menu_content для menu_name='{menu_name}', level={level} заняла {duration:.2f} секунд")
+        logging.info(f"get_menu_content для action='{action}', level={level} заняла {duration:.2f} секунд")

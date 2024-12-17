@@ -1,30 +1,10 @@
-from asyncio import sleep
 from aiogram import F, Router, types
-from aiogram.filters import Command, StateFilter, or_f, CommandStart
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.utils.formatting import Text
 from sqlalchemy.ext.asyncio import AsyncSession
 from database.orm_query import (
-    orm_add_user,
-    orm_update_user,
     orm_change_banner_image,
-    orm_add_program,
-    orm_add_training_day,
-    orm_add_exercise,
-    orm_add_set,
-    orm_get_program,
-    orm_get_training_day,
-    orm_get_exercise,
-    orm_get_set,
-    orm_delete_program,
-    orm_delete_training_day,
-    orm_update_set,
-    orm_update_exercise,
-    orm_update_program,
-    orm_get_user_by_id,
-    orm_get_exercises,
-    orm_delete_exercise,
     orm_get_admin_exercises,
     orm_update_admin_exercise,
     orm_add_admin_exercise,
@@ -33,8 +13,7 @@ from database.orm_query import (
     orm_get_info_pages, orm_get_categories,
 )
 from filters.chat_types import ChatTypeFilter, IsAdmin
-from handlers.menu_processing import get_menu_content
-from kbds.inline import MenuCallBack, get_callback_btns
+from kbds.inline import get_callback_btns
 from kbds.reply import get_keyboard
 
 admin_router = Router()
@@ -194,7 +173,7 @@ async def category_choice(callback: types.CallbackQuery, state: FSMContext, sess
 
 # Ловим любые некорректные действия, кроме нажатия на кнопку выбора категории
 @admin_router.message(AddAdminExercise.category_id)
-async def category_choice2(message: types.Message, state: FSMContext):
+async def category_choice2(message: types.Message):
     await message.answer("'Выберите категорию из кнопок.'")
 
 
