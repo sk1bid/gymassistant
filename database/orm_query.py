@@ -405,7 +405,6 @@ async def orm_get_user_exercises_in_category(session: AsyncSession, category_id:
     query = ((select(UserExercises)
               .where(UserExercises.category_id == category_id))
              .where(UserExercises.user_id == user_id))
-
     result = await session.execute(query)
     return result.scalars().all()
 

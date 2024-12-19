@@ -33,11 +33,11 @@ from database.orm_query import (
     orm_get_exercise_set,
     orm_get_exercise_sets,
     orm_add_set,
-    orm_get_sets_by_session, orm_update_program, orm_update_exercise,
+    orm_get_sets_by_session, orm_update_program, orm_update_exercise, orm_get_categories,
 )
 
 from handlers.menu_processing import get_menu_content
-from kbds.inline import MenuCallBack, get_url_btns, error_btns
+from kbds.inline import MenuCallBack, get_url_btns, error_btns, get_callback_btns
 from utils.separator import get_action_part
 
 user_private_router = Router()
@@ -244,8 +244,6 @@ async def clicked_btn(callback_data: MenuCallBack, state: FSMContext, selected_i
     or_f(
         MenuCallBack.filter(F.action == "add_u_excs"),
         MenuCallBack.filter(F.action == "shd/add_u_excs"),
-        MenuCallBack.filter(F.action == "ctg_add_u_excs"),
-        MenuCallBack.filter(F.action == "shd/ctg_add_u_excs"),
     )
 )
 async def add_exercise_callback_handler(
@@ -256,7 +254,7 @@ async def add_exercise_callback_handler(
     training_day_id = callback_data.training_day_id
     program_id = callback_data.program_id
     category_id = callback_data.category_id
-
+    empty = callback_data.empty
     await callback.message.answer("Введите название упражнения:", reply_markup=types.ReplyKeyboardRemove())
     await callback.answer()
 
@@ -266,10 +264,6 @@ async def add_exercise_callback_handler(
         origin = "program_settings"
     elif callback_data.action == "shd/add_u_excs":
         origin = "schedule"
-    elif callback_data.action == "ctg_add_u_excs":
-        origin = "ctg_program_settings"
-    elif callback_data.action == "shd/ctg_add_u_excs":
-        origin = "ctg_schedule"
     else:
         origin = "unknown"
 
@@ -279,7 +273,8 @@ async def add_exercise_callback_handler(
         program_id=program_id,
         category_id=category_id,
         user_id=user_id,
-        origin=origin  # Сохраняем источник
+        origin=origin,
+        empty=empty,
     )
     await state.set_state(AddExercise.name)
 
@@ -295,6 +290,7 @@ async def change_exercise_callback(callback: types.CallbackQuery, callback_data:
     training_day_id = callback_data.training_day_id
     program_id = callback_data.program_id
     category_id = callback_data.category_id
+    empty = callback_data.empty
 
     exercise_for_change = await orm_get_user_exercise(session, exercise_id)
     AddExercise.exercise_for_change = exercise_for_change
@@ -320,12 +316,6 @@ async def cancel_add_exercise(message: types.Message, state: FSMContext, session
     elif origin == "program_settings":
         level = 7
         action = "custom_excs"
-    elif origin == "ctg_program_settings":
-        level = 7
-        action = "ctg_custom_excs"
-    elif origin == "ctg_schedule":
-        level = 7
-        action = "shd/ctg_custom_excs"
     else:
         action = "main"
         level = 0
@@ -337,8 +327,8 @@ async def cancel_add_exercise(message: types.Message, state: FSMContext, session
         training_day_id=data.get("training_day_id"),
         category_id=data.get("category_id"),
         training_program_id=data.get("program_id"),
-        user_id=data.get("user_id")
-
+        user_id=data.get("user_id"),
+        empty=data.get("empty"),
     )
     await state.clear()
     await message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
@@ -360,48 +350,45 @@ async def add_exercise_description(
     await state.update_data(description=message.text)
     data = await state.get_data()
     try:
-        if AddExercise.exercise_for_change:
-            await orm_update_user_exercise(session, AddExercise.exercise_for_change.id, data)
+        if data.get("category_id"):
+            if AddExercise.exercise_for_change:
+                await orm_update_user_exercise(session, AddExercise.exercise_for_change.id, data)
+            else:
+                await orm_add_user_exercise(session, data)
+
+            await message.answer("Упражнение добавлено/изменено")
+
+            # Получаем origin из состояния
+            origin = data.get('origin')
+
+            # Определяем, куда вернуть пользователя на основе origin
+            origin = data.get('origin')
+            if origin == "schedule":
+                action = "shd/custom_excs"
+                level = 7
+            elif origin == "program_settings":
+                level = 7
+                action = "custom_excs"
+            else:
+                action = "main"
+                level = 0
+            media, reply_markup = await get_menu_content(
+                session=session,
+                level=level,
+                action=action,
+                page=1,
+                training_day_id=data.get("training_day_id"),
+                category_id=data.get("category_id"),
+                training_program_id=data.get("program_id"),
+                user_id=data.get("user_id"),
+                empty=data.get("empty"),
+            )
+            await message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
         else:
-            await orm_add_user_exercise(session, data)
-
-        await message.answer("Упражнение добавлено/изменено")
-
-        # Получаем origin из состояния
-        origin = data.get('origin')
-
-        # Определяем, куда вернуть пользователя на основе origin
-        if origin == "schedule":
-            action = "shd/custom_excs"
-            level = 7
-        elif origin == "program_settings":
-            level = 7
-            action = "custom_excs"
-        elif origin == "ctg_add_u_excs":
-            level = 7
-            action = "ctg_custom_excs"
-        elif origin == "shd/ctg_add_u_excs":
-            level = 7
-            action = "shd/ctg_custom_excs"
-        else:
-            action = "main"
-            level = 0
-
-        await state.clear()
-
-        # Получаем новое меню на основе action и level
-        media, reply_markup = await get_menu_content(
-            session=session,
-            level=level,
-            action=action,
-            page=1,
-            training_day_id=data.get("training_day_id"),
-            category_id=data.get("category_id"),
-            training_program_id=data.get("program_id"),
-            user_id=data.get("user_id")
-
-        )
-        await message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
+            categories = await orm_get_categories(session)
+            btns = {category.name: str(category.id) for category, _ in categories}
+            await message.answer("Выберите категорию", reply_markup=get_callback_btns(btns=btns))
+            await state.set_state(AddExercise.category_id)
     except Exception as e:
         logging.exception(f"Ошибка при добавлении упражнения: {e}")
         btns = {"Написать разработчику": "https://t.me/cg_skbid"}
@@ -410,8 +397,56 @@ async def add_exercise_description(
             reply_markup=get_url_btns(btns=btns, sizes=(1,))
         )
         await state.clear()
-    finally:
-        AddExercise.exercise_for_change = None
+
+
+@user_private_router.callback_query(AddExercise.category_id)
+async def category_choice(callback: types.CallbackQuery, state: FSMContext, session: AsyncSession):
+    categories = await orm_get_categories(session)
+    category_ids = [category.id for category, _ in categories]
+    if int(callback.data) in category_ids:
+        await callback.answer()
+        await state.update_data(category_id=int(callback.data))
+        data = await state.get_data()
+        if AddExercise.exercise_for_change:
+            await orm_update_user_exercise(session, AddExercise.exercise_for_change.id, data)
+        else:
+            await orm_add_user_exercise(session, data)
+
+        await callback.message.answer("Упражнение добавлено/изменено")
+
+        # Получаем origin из состояния
+        origin = data.get('origin')
+        if origin == "schedule":
+            action = "shd/custom_excs"
+            level = 7
+        elif origin == "program_settings":
+            level = 7
+            action = "custom_excs"
+        else:
+            action = "main"
+            level = 0
+        media, reply_markup = await get_menu_content(
+            session=session,
+            level=level,
+            action=action,
+            page=1,
+            training_day_id=data.get("training_day_id"),
+            category_id=data.get("category_id"),
+            training_program_id=data.get("program_id"),
+            user_id=data.get("user_id"),
+            empty=data.get("empty"),
+        )
+        await callback.message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
+        await state.clear()
+    else:
+        await callback.message.answer('Выберите категорию из кнопок.')
+        await callback.answer()
+
+
+
+@user_private_router.message(AddExercise.category_id)
+async def category_choice2(message: types.Message):
+    await message.answer("'Выберите категорию из кнопок.'")
 
 
 ########################################################################################################################
@@ -450,6 +485,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 year=callback_data.year,
                 month=callback_data.month,
                 set_id=callback_data.set_id,
+                empty=callback_data.empty,
             )
 
             if action.startswith("shd/"):
@@ -466,6 +502,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     year=callback_data.year,
                     month=callback_data.month,
                     set_id=callback_data.set_id,
+                    empty=callback_data.empty,
                 )
 
             await callback.message.edit_media(media=media, reply_markup=reply_markup)
@@ -490,6 +527,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 year=callback_data.year,
                 month=callback_data.month,
                 set_id=callback_data.set_id,
+                empty=callback_data.empty,
             )
 
             if action.startswith("shd/"):
@@ -506,6 +544,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     year=callback_data.year,
                     month=callback_data.month,
                     set_id=callback_data.set_id,
+                    empty=callback_data.empty,
                 )
             await callback.message.edit_media(media=media, reply_markup=reply_markup)
 
@@ -531,6 +570,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 year=callback_data.year,
                 month=callback_data.month,
                 set_id=callback_data.set_id,
+                empty=callback_data.empty,
             )
             await callback.message.edit_media(media=media, reply_markup=reply_markup)
             await callback.answer("Программа удалена.")
@@ -576,6 +616,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 year=callback_data.year,
                 month=callback_data.month,
                 set_id=callback_data.set_id,
+                empty=callback_data.empty,
             )
             if action.startswith("shd/"):
                 media, reply_markup = await get_menu_content(
@@ -609,6 +650,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 year=callback_data.year,
                 month=callback_data.month,
                 set_id=callback_data.set_id,
+                empty=callback_data.empty,
             )
             await callback.message.edit_media(media=media, reply_markup=reply_markup)
             await callback.answer()
@@ -630,6 +672,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     year=callback_data.year,
                     month=callback_data.month,
                     set_id=callback_data.set_id,
+                    empty=callback_data.empty,
                 )
                 await callback.message.edit_media(media=media, reply_markup=reply_markup)
                 user_data = await state.get_data()
@@ -656,6 +699,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 year=callback_data.year,
                 month=callback_data.month,
                 set_id=callback_data.set_id,
+                empty=callback_data.empty,
             )
             await state.update_data(selected_exercise_id=None, selected_program_id=None)
             await callback.message.edit_media(media=media, reply_markup=reply_markup)

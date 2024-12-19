@@ -21,7 +21,7 @@ from database.orm_query import (
     orm_add_exercise_set,
     orm_get_exercise_sets,
     orm_turn_on_off_program,
-    orm_get_user_exercises_in_category, orm_get_user_exercises
+    orm_get_user_exercises_in_category, orm_get_user_exercises, orm_get_user_exercise
 )
 
 from kbds.inline import (
@@ -396,18 +396,24 @@ async def show_categories(session: AsyncSession, level: int, training_program_id
 
 
 async def show_exercises_in_category(session: AsyncSession, level: int, exercise_id: int, training_day_id: int,
-                                     page: int, action: str, training_program_id: int, category_id):
+                                     page: int, action: str, training_program_id: int, category_id: int, user_id: int,
+                                     empty: bool):
     try:
-        user_exercises = await orm_get_exercises(session, training_day_id)
+        banner = await orm_get_banner(session, "user_program")
         category = await orm_get_category(session, category_id)
         user_program = await orm_get_program(session, training_program_id)
         admin_exercises = await orm_get_admin_exercises_in_category(session, category_id)
-        banner = await orm_get_banner(session, "user_program")
+        user_exercises = await orm_get_exercises(session, training_day_id)
+        user_custom_exercises = await orm_get_user_exercises_in_category(session, category_id, user_id)
 
         # Если action начинается на "add_..." - добавляем упражнение из админских в пользовательский список
         if get_action_part(action).startswith("add_"):
             if exercise_id:
-                exercise = await orm_get_admin_exercise(session, exercise_id)
+                if get_action_part(action).__contains__("custom"):
+                    exercise = await orm_get_user_exercise(session, exercise_id)
+                else:
+                    exercise = await orm_get_admin_exercise(session, exercise_id)
+
                 if exercise:
                     await orm_add_exercise(session, {
                         "name": exercise.name,
@@ -416,20 +422,38 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
                     user_exercises = await orm_get_exercises(session, training_day_id)
                     for _ in range(user_exercises[-1].base_sets):
                         await orm_add_exercise_set(session, user_exercises[-1].id, user_exercises[-1].base_reps)
+        if empty is False and category_id:
+            caption_text = exercises_in_program(user_exercises)
 
-        caption_text = exercises_in_program(user_exercises)
+            user_image = InputMediaPhoto(
+                media=banner.image,
+                caption=f"<strong>{banner.description + user_program.name}\n\n{caption_text}\n\n"
+                        f"Упражнения в категории: {category.name}</strong>",
+            )
+            kbds = get_category_exercise_btns(level=level,
+                                              program_id=training_program_id,
+                                              training_day_id=training_day_id,
+                                              page=page,
+                                              template_exercises=admin_exercises,
+                                              user_exercises=user_custom_exercises,
+                                              action=action, category_id=category_id, empty=empty)
 
-        user_image = InputMediaPhoto(
-            media=banner.image,
-            caption=f"<strong>{banner.description + user_program.name}\n\n{caption_text}\n\n"
-                    f"Упражнения в категории: {category.name}</strong>",
-        )
-        kbds = get_category_exercise_btns(level=level,
-                                          program_id=training_program_id,
-                                          training_day_id=training_day_id,
-                                          page=page,
-                                          template_exercises=admin_exercises,
-                                          action=action, category_id=category_id)
+        else:
+            user_custom_exercises = await orm_get_user_exercises(session, user_id)
+            caption_text = exercises_in_program(user_exercises)
+            user_image = InputMediaPhoto(
+                media=banner.image,
+                caption=f"<strong>{banner.description + user_program.name}\n\n{caption_text}\n\n"
+                        f"Пользовательские упражения:</strong>",
+            )
+            kbds = get_category_exercise_btns(level=level,
+                                              program_id=training_program_id,
+                                              training_day_id=training_day_id,
+                                              page=page,
+                                              user_exercises=user_custom_exercises,
+                                              category_id=None,
+                                              action=action, empty=empty)
+
         return user_image, kbds
     except Exception as e:
         logging.exception(f"Ошибка в show_exercises_in_category: {e}")
@@ -495,30 +519,33 @@ async def exercise_settings(session: AsyncSession, level: int, exercise_id: int,
 
 
 async def custom_exercises(session: AsyncSession, level: int, training_day_id: int,
-                           page: int, action: str, training_program_id: int, category_id: int, user_id: int):
+                           page: int, action: str, training_program_id: int, category_id: int, user_id: int,
+                           empty: bool):
     try:
-        custom_user_exercises = await orm_get_user_exercises_in_category(session, category_id, user_id)
-        if get_action_part(action).startswith("ctg"):
+        if empty is False and category_id:
+            custom_user_exercises = await orm_get_user_exercises_in_category(session, category_id, user_id)
+            user_category = await orm_get_category(session, category_id)
+            banner = await orm_get_banner(session, "user_program")
+            user_image = InputMediaPhoto(
+                media=banner.image,
+                caption=f"<strong>Пользовательские упражнения ({user_category.name})</strong>\n\n" +
+                        exercises_in_program(custom_user_exercises)
+            )
+
+            kbds = get_custom_exercise_btns(level=level, action=action, program_id=training_program_id, page=page,
+                                            training_day_id=training_day_id, category_id=category_id, empty=empty)
+        else:
             custom_user_exercises = await orm_get_user_exercises(session, user_id)
             banner = await orm_get_banner(session, "user_program")
             user_image = InputMediaPhoto(
                 media=banner.image,
-                caption="<strong>Пользовательские упражнения</strong>\n\n" +
+                caption=f"<strong>Пользовательские упражнения: </strong>\n\n" +
                         exercises_in_program(custom_user_exercises)
             )
-            kbds = get_custom_exercise_btns(level=level, action=action, program_id=training_program_id, page=page,
-                                            training_day_id=training_day_id, category_id=category_id)
-            return user_image, kbds
-        user_category = await orm_get_category(session, category_id)
-        banner = await orm_get_banner(session, "user_program")
-        user_image = InputMediaPhoto(
-            media=banner.image,
-            caption=f"<strong>Пользовательские упражнения ({user_category.name})</strong>\n\n" +
-                    exercises_in_program(custom_user_exercises)
-        )
 
-        kbds = get_custom_exercise_btns(level=level, action=action, program_id=training_program_id, page=page,
-                                        training_day_id=training_day_id, category_id=category_id)
+            kbds = get_custom_exercise_btns(level=level, action=action, program_id=training_program_id, page=page,
+                                            training_day_id=training_day_id, category_id=category_id, empty=empty)
+
         return user_image, kbds
 
     except Exception as e:
@@ -533,7 +560,8 @@ async def custom_exercises(session: AsyncSession, level: int, training_day_id: i
 
 async def get_menu_content(session: AsyncSession, level: int, action: str, training_program_id: int = None,
                            exercise_id: int = None, page: int = None, training_day_id: int = None, user_id: int = None,
-                           category_id: int = None, month: int = None, year: int = None, set_id: int = None):
+                           category_id: int = None, month: int = None, year: int = None, set_id: int = None,
+                           empty: bool = False):
     start_time = time.monotonic()
     try:
         # В этом коде мы исходим из того, что action теперь используется вместо menu_name.
@@ -583,12 +611,12 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
                 return await exercise_settings(session, level, exercise_id, training_day_id, page, action,
                                                training_program_id)
             return await show_exercises_in_category(session, level, exercise_id, training_day_id, page, action,
-                                                    training_program_id, category_id)
+                                                    training_program_id, category_id, user_id, empty)
 
         elif level == 7:
             # Пользовательские упражнения
             return await custom_exercises(session, level, training_day_id, page, action,
-                                          training_program_id, category_id, user_id)
+                                          training_program_id, category_id, user_id, empty)
 
         else:
             logging.warning(f"Неизвестный уровень меню: {level}")
