@@ -33,7 +33,7 @@ from database.orm_query import (
     orm_get_exercise_set,
     orm_get_exercise_sets,
     orm_add_set,
-    orm_get_sets_by_session, orm_update_program, orm_update_exercise, orm_get_categories,
+    orm_get_sets_by_session, orm_update_program, orm_update_exercise, orm_get_categories, orm_delete_user_exercise,
 )
 
 from handlers.menu_processing import get_menu_content
@@ -210,8 +210,9 @@ async def add_training_program_name(message: types.Message, state: FSMContext, s
 
 ###########################################################################################
 
-async def clicked_btn(callback_data: MenuCallBack, state: FSMContext, selected_id, callback: types.CallbackQuery,
-                      session: AsyncSession, clicked_id):
+async def clicked_btn(callback_data: MenuCallBack, state: FSMContext, selected_id, clicked_id,
+                      callback: types.CallbackQuery,
+                      session: AsyncSession):
     new_selected_id = None if selected_id == clicked_id else clicked_id
 
     # Если action начинается с "to_edit" - переключаем упражнение
@@ -229,7 +230,8 @@ async def clicked_btn(callback_data: MenuCallBack, state: FSMContext, selected_i
         page=callback_data.page,
         training_day_id=callback_data.training_day_id,
         user_id=callback.from_user.id,
-        category_id=callback_data.category_id
+        category_id=callback_data.category_id,
+        empty=callback_data.empty,
     )
 
     await callback.message.edit_media(media=media, reply_markup=reply_markup)
@@ -358,9 +360,6 @@ async def add_exercise_description(
 
             await message.answer("Упражнение добавлено/изменено")
 
-            # Получаем origin из состояния
-            origin = data.get('origin')
-
             # Определяем, куда вернуть пользователя на основе origin
             origin = data.get('origin')
             if origin == "schedule":
@@ -385,7 +384,7 @@ async def add_exercise_description(
             )
             await message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
         else:
-            categories = await orm_get_categories(session)
+            categories = await orm_get_categories(session, message.from_user.id)
             btns = {category.name: str(category.id) for category, _ in categories}
             await message.answer("Выберите категорию", reply_markup=get_callback_btns(btns=btns))
             await state.set_state(AddExercise.category_id)
@@ -400,8 +399,9 @@ async def add_exercise_description(
 
 
 @user_private_router.callback_query(AddExercise.category_id)
-async def category_choice(callback: types.CallbackQuery, state: FSMContext, session: AsyncSession):
-    categories = await orm_get_categories(session)
+async def category_choice(callback: types.CallbackQuery, state: FSMContext,
+                          session: AsyncSession):
+    categories = await orm_get_categories(session, callback.from_user.id)
     category_ids = [category.id for category, _ in categories]
     if int(callback.data) in category_ids:
         await callback.answer()
@@ -443,7 +443,6 @@ async def category_choice(callback: types.CallbackQuery, state: FSMContext, sess
         await callback.answer()
 
 
-
 @user_private_router.message(AddExercise.category_id)
 async def category_choice2(message: types.Message):
     await message.answer("'Выберите категорию из кнопок.'")
@@ -469,7 +468,10 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                               clicked_id=callback_data.exercise_id)
 
         elif get_action_part(action).startswith("del"):
-            await orm_delete_exercise(session, callback_data.exercise_id)
+            if get_action_part(action).__contains__("custom"):
+                await orm_delete_user_exercise(session, callback_data.exercise_id)
+            else:
+                await orm_delete_exercise(session, callback_data.exercise_id)
             await state.update_data(selected_exercise_id=None)
 
             media, reply_markup = await get_menu_content(

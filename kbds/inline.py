@@ -731,10 +731,11 @@ def get_category_exercise_btns(
                 k += 1
 
     padding = (-k) % sizes[0]
-    if k >= 2:
+    if k > 2:
         for _ in range(padding):
             keyboard.add(InlineKeyboardButton(text=" ", callback_data=EMPTY_CALLBACK))
-
+    if k == 1:
+        sizes = (1, 2)
     back_callback = MenuCallBack(
         level=level - 1,
         action="ctgs",
@@ -769,7 +770,7 @@ def get_category_exercise_btns(
             empty=empty,
         ).pack()
 
-    custom_exercises_button = InlineKeyboardButton(text="🆕 Добавить свое упражнение",
+    custom_exercises_button = InlineKeyboardButton(text="🫵 Ваши упражнения",
                                                    callback_data=custom_exercises)
     back_button = InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback)
     keyboard.row(back_button, custom_exercises_button)
@@ -783,36 +784,190 @@ def get_custom_exercise_btns(
         page: int,
         category_id: int,
         training_day_id: int,
+        exercise_id: int,
         action: str,
         empty: bool,
+        user_exercises: list,
 ) -> InlineKeyboardMarkup:
     """
     Возвращает клавиатуру для добавления пользовательского упражнения.
     """
 
     keyboard = InlineKeyboardBuilder()
-    back_callback = MenuCallBack(
-        level=level - 1,
-        action="ctg",
-        training_day_id=training_day_id,
-        category_id=category_id,
-        program_id=program_id,
-        page=page,
-        empty=empty,
-    ).pack()
-    custom_exercises = MenuCallBack(
-        level=level,
-        action="add_u_excs",
-        training_day_id=training_day_id,
-        category_id=category_id,
-        program_id=program_id,
-        page=page,
-        empty=empty,
-    ).pack()
-    if action.startswith("shd/"):
+
+    if get_action_part(action) == "to_edit":
+        for exercise in user_exercises:
+            button_text = f"👉 {exercise.name}" if exercise_id == exercise.id else f"🔘 {exercise.name}"
+            exercise_button = InlineKeyboardButton(
+                text=button_text,
+                callback_data=MenuCallBack(
+                    action="to_edit",
+                    level=level,
+                    exercise_id=exercise.id,
+                    page=page,
+                    training_day_id=training_day_id,
+                    category_id=category_id,
+                    program_id=program_id,
+                    empty=empty,
+                ).pack()
+            )
+            if action.startswith("shd/"):
+                exercise_button = InlineKeyboardButton(
+                    text=button_text,
+                    callback_data=MenuCallBack(
+                        action="shd/to_edit",
+                        level=level,
+                        exercise_id=exercise.id,
+                        category_id=category_id,
+                        page=page,
+                        training_day_id=training_day_id,
+                        program_id=program_id,
+                        empty=empty,
+                    ).pack()
+                )
+            keyboard.row(exercise_button)
+
+        if exercise_id is not None:
+
+            delete_callback = MenuCallBack(
+                action="del_custom",
+                level=level if len(user_exercises) != 1 else level - 1,
+                exercise_id=exercise_id,
+                page=page,
+                training_day_id=training_day_id,
+                category_id=category_id,
+                program_id=program_id,
+                empty=empty,
+            ).pack()
+            if action.startswith("shd/"):
+                delete_callback = MenuCallBack(
+                    action="shd/del_custom",
+                    level=level if len(user_exercises) != 1 else level - 1,
+                    exercise_id=exercise_id,
+                    page=page,
+                    category_id=category_id,
+                    training_day_id=training_day_id,
+                    program_id=program_id,
+                    empty=empty,
+                ).pack()
+            delete_button = InlineKeyboardButton(text="🗑️ Удалить упражнение", callback_data=delete_callback)
+            back_callback = MenuCallBack(
+                level=level - 1,
+                action="ctg",
+                training_day_id=training_day_id,
+                category_id=category_id,
+                program_id=program_id,
+                page=page,
+                empty=empty,
+            ).pack()
+            custom_exercises = MenuCallBack(
+                level=level,
+                action="add_u_excs",
+                training_day_id=training_day_id,
+                category_id=category_id,
+                program_id=program_id,
+                page=page,
+                empty=empty,
+            ).pack()
+            if action.startswith("shd/"):
+                back_callback = MenuCallBack(
+                    level=level - 1,
+                    action="shd/ctg",
+                    training_day_id=training_day_id,
+                    category_id=category_id,
+                    program_id=program_id,
+                    page=page,
+                    empty=empty,
+                ).pack()
+                custom_exercises = MenuCallBack(
+                    level=level,
+                    action="shd/add_u_excs",
+                    training_day_id=training_day_id,
+                    category_id=category_id,
+                    program_id=program_id,
+                    page=page,
+                    empty=empty,
+                ).pack()
+            back_button = InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback)
+            add_button = InlineKeyboardButton(text="➕ Добавить упражнение", callback_data=custom_exercises)
+            keyboard.row(delete_button)
+            keyboard.row(back_button, add_button)
+
+        else:
+            back_callback = MenuCallBack(
+                level=level - 1,
+                action="ctg",
+                training_day_id=training_day_id,
+                category_id=category_id,
+                program_id=program_id,
+                page=page,
+                empty=empty,
+            ).pack()
+            custom_exercises = MenuCallBack(
+                level=level,
+                action="add_u_excs",
+                training_day_id=training_day_id,
+                category_id=category_id,
+                program_id=program_id,
+                page=page,
+                empty=empty,
+            ).pack()
+            if action.startswith("shd/"):
+                back_callback = MenuCallBack(
+                    level=level - 1,
+                    action="shd/ctg",
+                    training_day_id=training_day_id,
+                    category_id=category_id,
+                    program_id=program_id,
+                    page=page,
+                    empty=empty,
+                ).pack()
+                custom_exercises = MenuCallBack(
+                    level=level,
+                    action="shd/add_u_excs",
+                    training_day_id=training_day_id,
+                    category_id=category_id,
+                    program_id=program_id,
+                    page=page,
+                    empty=empty,
+                ).pack()
+            back_button = InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback)
+            add_button = InlineKeyboardButton(text="➕ Добавить упражнение", callback_data=custom_exercises)
+            keyboard.row(back_button, add_button)
+    else:
+        for exercise in user_exercises:
+            exercise_button = InlineKeyboardButton(
+                text=f"🔘 {exercise.name}",
+                callback_data=MenuCallBack(
+                    action="to_edit",
+                    level=level,
+                    exercise_id=exercise.id,
+                    category_id=category_id,
+                    page=page,
+                    training_day_id=training_day_id,
+                    program_id=program_id,
+                    empty=empty,
+                ).pack()
+            )
+            if action.startswith("shd/"):
+                exercise_button = InlineKeyboardButton(
+                    text=f"🔘 {exercise.name}",
+                    callback_data=MenuCallBack(
+                        action="shd/to_edit",
+                        level=level,
+                        exercise_id=exercise.id,
+                        category_id=category_id,
+                        page=page,
+                        training_day_id=training_day_id,
+                        program_id=program_id,
+                        empty=empty,
+                    ).pack()
+                )
+            keyboard.row(exercise_button)
+
         back_callback = MenuCallBack(
             level=level - 1,
-            action="shd/ctg",
+            action="ctg",
             training_day_id=training_day_id,
             category_id=category_id,
             program_id=program_id,
@@ -821,16 +976,36 @@ def get_custom_exercise_btns(
         ).pack()
         custom_exercises = MenuCallBack(
             level=level,
-            action="shd/add_u_excs",
+            action="add_u_excs",
             training_day_id=training_day_id,
             category_id=category_id,
             program_id=program_id,
             page=page,
             empty=empty,
         ).pack()
-    back_button = InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback)
-    add_button = InlineKeyboardButton(text="➕ Добавить упражнение", callback_data=custom_exercises)
-    keyboard.row(back_button, add_button)
+        if action.startswith("shd/"):
+            back_callback = MenuCallBack(
+                level=level - 1,
+                action="shd/ctg",
+                training_day_id=training_day_id,
+                category_id=category_id,
+                program_id=program_id,
+                page=page,
+                empty=empty,
+            ).pack()
+            custom_exercises = MenuCallBack(
+                level=level,
+                action="shd/add_u_excs",
+                training_day_id=training_day_id,
+                category_id=category_id,
+                program_id=program_id,
+                page=page,
+                empty=empty,
+            ).pack()
+        back_button = InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback)
+        add_button = InlineKeyboardButton(text="➕ Добавить упражнение", callback_data=custom_exercises)
+        keyboard.row(back_button, add_button)
+
     return keyboard.as_markup()
 
 

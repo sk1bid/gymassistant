@@ -361,7 +361,7 @@ async def show_categories(session: AsyncSession, level: int, training_program_id
         user_data = await orm_get_user_by_id(session, user_id)
         user_name = user_data.name
         user_custom_exercises = await orm_get_user_exercises(session, user_id)
-        categories = await orm_get_categories(session)
+        categories = await orm_get_categories(session, user_id)
 
         user_program = await orm_get_program(session, training_program_id)
         banner = await orm_get_banner(session, "user_program")
@@ -441,11 +441,19 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
         else:
             user_custom_exercises = await orm_get_user_exercises(session, user_id)
             caption_text = exercises_in_program(user_exercises)
-            user_image = InputMediaPhoto(
-                media=banner.image,
-                caption=f"<strong>{banner.description + user_program.name}\n\n{caption_text}\n\n"
-                        f"Пользовательские упражения:</strong>",
-            )
+            if user_custom_exercises:
+                user_image = InputMediaPhoto(
+                    media=banner.image,
+                    caption=f"<strong>{banner.description + user_program.name}\n\n{caption_text}\n\n"
+                            f"Пользовательские упражения:</strong>",
+                )
+            else:
+                user_image = InputMediaPhoto(
+                    media=banner.image,
+                    caption=f"<strong>{banner.description + user_program.name}\n\n{caption_text}\n\n"
+                            f"Пользовательские упражения:\n\n"
+                            f"{exercises_in_program(user_custom_exercises)}</strong>",
+                )
             kbds = get_category_exercise_btns(level=level,
                                               program_id=training_program_id,
                                               training_day_id=training_day_id,
@@ -520,31 +528,47 @@ async def exercise_settings(session: AsyncSession, level: int, exercise_id: int,
 
 async def custom_exercises(session: AsyncSession, level: int, training_day_id: int,
                            page: int, action: str, training_program_id: int, category_id: int, user_id: int,
-                           empty: bool):
+                           empty: bool, exericse_id: int):
     try:
         if empty is False and category_id:
             custom_user_exercises = await orm_get_user_exercises_in_category(session, category_id, user_id)
             user_category = await orm_get_category(session, category_id)
             banner = await orm_get_banner(session, "user_program")
-            user_image = InputMediaPhoto(
-                media=banner.image,
-                caption=f"<strong>Пользовательские упражнения ({user_category.name})</strong>\n\n" +
-                        exercises_in_program(custom_user_exercises)
-            )
+            if custom_user_exercises:
+
+                user_image = InputMediaPhoto(
+                    media=banner.image,
+                    caption=f"<strong>Пользовательские упражнения ({user_category.name})</strong>\n\n"
+                            f"<strong>Чтобы изменить упражнение, выберите его из списка:</strong>"
+                )
+            else:
+                user_image = InputMediaPhoto(
+                    media=banner.image,
+                    caption=f"<strong>Пользовательские упражнения ({user_category.name})</strong>\n\n"
+                            f"<strong>{exercises_in_program(custom_user_exercises)}</strong>"
+                )
 
             kbds = get_custom_exercise_btns(level=level, action=action, program_id=training_program_id, page=page,
-                                            training_day_id=training_day_id, category_id=category_id, empty=empty)
+                                            training_day_id=training_day_id, category_id=category_id, empty=empty,
+                                            user_exercises=custom_user_exercises, exercise_id=exericse_id)
         else:
             custom_user_exercises = await orm_get_user_exercises(session, user_id)
             banner = await orm_get_banner(session, "user_program")
-            user_image = InputMediaPhoto(
-                media=banner.image,
-                caption=f"<strong>Пользовательские упражнения: </strong>\n\n" +
-                        exercises_in_program(custom_user_exercises)
-            )
+            if custom_user_exercises:
+
+                user_image = InputMediaPhoto(
+                    media=banner.image,
+                    caption=f"<strong>Пользовательские упражнения: </strong>\n\n"
+                            f"<strong>Чтобы изменить упражнение, выберите его из списка:</strong>")
+            else:
+                user_image = InputMediaPhoto(
+                    media=banner.image,
+                    caption=f"<strong>Пользовательские упражнения: </strong>\n\n"
+                            f"<strong>{exercises_in_program(custom_user_exercises)}</strong>")
 
             kbds = get_custom_exercise_btns(level=level, action=action, program_id=training_program_id, page=page,
-                                            training_day_id=training_day_id, category_id=category_id, empty=empty)
+                                            training_day_id=training_day_id, category_id=category_id, empty=empty,
+                                            user_exercises=custom_user_exercises, exercise_id=exericse_id)
 
         return user_image, kbds
 
@@ -616,7 +640,7 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
         elif level == 7:
             # Пользовательские упражнения
             return await custom_exercises(session, level, training_day_id, page, action,
-                                          training_program_id, category_id, user_id, empty)
+                                          training_program_id, category_id, user_id, empty, exercise_id)
 
         else:
             logging.warning(f"Неизвестный уровень меню: {level}")

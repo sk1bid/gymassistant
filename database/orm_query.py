@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import select, update, delete, func
+from sqlalchemy import select, update, delete, func, union_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import User, Banner, TrainingProgram, TrainingDay, Exercise, Set, AdminExercises, ExerciseCategory, \
@@ -423,24 +423,54 @@ async def orm_update_user_exercise(session: AsyncSession, user_exercise_id: int,
     await session.commit()
 
 
-async def orm_delete_user_exercise(session: AsyncSession, admin_exercise_id: int):
-    query = delete(UserExercises).where(UserExercises.id == admin_exercise_id)
+async def orm_delete_user_exercise(session: AsyncSession, user_exercise_id: int):
+    query = delete(UserExercises).where(UserExercises.id == user_exercise_id)
     await session.execute(query)
     await session.commit()
 
 
 ##################### Категории упражнений #####################################
-async def orm_get_categories(session: AsyncSession):
+async def orm_get_categories(session: AsyncSession, user_id: int):
+    """
+    Получает список категорий упражнений с количеством упражнений в каждой категории,
+    включая административные и пользовательские упражнения для конкретного пользователя.
+
+    :param session: Асинхронная сессия SQLAlchemy.
+    :param user_id: Идентификатор пользователя, для которого считаются пользовательские упражнения.
+    :return: Список кортежей (ExerciseCategory, exercise_count).
+    """
+    # Подзапрос для административных упражнений
+    admin_select = select(
+        AdminExercises.category_id.label('category_id')
+    )
+
+    # Подзапрос для пользовательских упражнений, фильтрованных по user_id
+    user_select = select(
+        UserExercises.category_id.label('category_id')
+    ).where(
+        UserExercises.user_id == user_id
+    )
+
+    # Объединение подзапросов с помощью UNION ALL
+    combined_subquery = union_all(admin_select, user_select).subquery()
+
+    # Основной запрос: подсчёт количества упражнений в каждой категории
     query = (
-        select(ExerciseCategory, func.count(AdminExercises.id).label("exercise_count"))
-        .outerjoin(AdminExercises, ExerciseCategory.id == AdminExercises.category_id)
+        select(
+            ExerciseCategory,
+            func.count(combined_subquery.c.category_id).label("exercise_count")
+        )
+        .outerjoin(
+            combined_subquery,
+            ExerciseCategory.id == combined_subquery.c.category_id
+        )
         .group_by(ExerciseCategory.id)
         .order_by(ExerciseCategory.name)
     )
+
+    # Выполнение запроса
     result = await session.execute(query)
     return result.all()
-
-
 async def orm_get_category(session: AsyncSession, category_id: int):
     query = (
         select(ExerciseCategory).where(ExerciseCategory.id == category_id)
