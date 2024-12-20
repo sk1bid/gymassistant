@@ -109,26 +109,55 @@ async def orm_delete_training_day(session: AsyncSession, training_day_id: int):
 
 ############################ Упражнения ######################################
 
-async def orm_add_exercise(session: AsyncSession, data: dict, training_day_id: int):
+async def orm_add_exercise(session: AsyncSession, data: dict, training_day_id: int, exercise_type: str):
+    """
+    Добавляет новое упражнение в базу данных.
+
+    :param session: Асинхронная сессия SQLAlchemy.
+    :param data: Словарь с данными упражнения (name, description и т.д.).
+    :param training_day_id: ID дня тренировки, к которому относится упражнение.
+    :param exercise_type: Тип упражнения ('admin' или 'user').
+    """
+    # Получение максимальной позиции для определения новой позиции
     result = await session.execute(
         select(func.max(Exercise.position))
         .where(Exercise.training_day_id == training_day_id)
-        .execution_options(populate_existing=True)
     )
     max_position = result.scalar()
     if max_position is None:
         max_position = -1
 
+    # Определение значений внешних ключей в зависимости от типа упражнения
+    admin_exercise_id = None
+    user_exercise_id = None
+
+    if exercise_type == 'admin':
+        if 'admin_exercise_id' not in data or data['admin_exercise_id'] is None:
+            raise ValueError("admin_exercise_id должен быть указан для администраторских упражнений.")
+        admin_exercise_id = data['admin_exercise_id']
+    elif exercise_type == 'user':
+        if 'user_exercise_id' not in data or data['user_exercise_id'] is None:
+            raise ValueError("user_exercise_id должен быть указан для пользовательских упражнений.")
+        user_exercise_id = data['user_exercise_id']
+    else:
+        raise ValueError("Неверный тип упражнения. Должно быть 'admin' или 'user'.")
+
+    # Создание объекта Exercise с установленными внешними ключами
     obj = Exercise(
         training_day_id=training_day_id,
         name=data['name'],
         description=data['description'],
-        position=max_position + 1
+        position=max_position + 1,
+        admin_exercise_id=admin_exercise_id,
+        user_exercise_id=user_exercise_id
     )
 
     session.add(obj)
-    await session.commit()
-
+    try:
+        await session.commit()
+    except IntegrityError as e:
+        await session.rollback()
+        raise e
 
 async def orm_get_exercises(session: AsyncSession, training_day_id: int):
     query = select(Exercise).where(Exercise.training_day_id == training_day_id).order_by(Exercise.position)
@@ -143,6 +172,13 @@ async def orm_get_exercise(session: AsyncSession, exercise_id: int):
 
 
 async def orm_update_exercise(session: AsyncSession, exercise_id: int, data: dict):
+    """
+    Обновляет существующее упражнение в базе данных.
+
+    :param session: Асинхронная сессия SQLAlchemy.
+    :param exercise_id: ID упражнения для обновления.
+    :param data: Словарь с обновляемыми данными (name, description, reps, sets, training_day_id, admin_exercise_id, user_exercise_id).
+    """
     update_data = {}
 
     if 'name' in data:
@@ -156,6 +192,22 @@ async def orm_update_exercise(session: AsyncSession, exercise_id: int, data: dic
     if 'training_day_id' in data:
         update_data['training_day_id'] = data['training_day_id']
 
+    # Управление типом упражнения при обновлении
+    if 'exercise_type' in data:
+        exercise_type = data['exercise_type']
+        if exercise_type == 'admin':
+            if 'admin_exercise_id' not in data or data['admin_exercise_id'] is None:
+                raise ValueError("admin_exercise_id должен быть указан для администраторских упражнений.")
+            update_data['admin_exercise_id'] = data['admin_exercise_id']
+            update_data['user_exercise_id'] = None  # Обнуляем пользовательский FK
+        elif exercise_type == 'user':
+            if 'user_exercise_id' not in data or data['user_exercise_id'] is None:
+                raise ValueError("user_exercise_id должен быть указан для пользовательских упражнений.")
+            update_data['user_exercise_id'] = data['user_exercise_id']
+            update_data['admin_exercise_id'] = None  # Обнуляем админский FK
+        else:
+            raise ValueError("Неверный тип упражнения. Должно быть 'admin' или 'user'.")
+
     query = (
         update(Exercise)
         .where(Exercise.id == exercise_id)
@@ -163,13 +215,27 @@ async def orm_update_exercise(session: AsyncSession, exercise_id: int, data: dic
         .execution_options(synchronize_session="fetch")
     )
     await session.execute(query)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as e:
+        await session.rollback()
+        raise e
 
 
 async def orm_delete_exercise(session: AsyncSession, exercise_id: int):
+    """
+    Удаляет упражнение из базы данных.
+
+    :param session: Асинхронная сессия SQLAlchemy.
+    :param exercise_id: ID упражнения для удаления.
+    """
     query = delete(Exercise).where(Exercise.id == exercise_id)
     await session.execute(query)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as e:
+        await session.rollback()
+        raise e
 
 
 async def move_exercise_up(session: AsyncSession, exercise_id: int):
@@ -371,10 +437,15 @@ async def orm_update_admin_exercise(session: AsyncSession, admin_exercise_id: in
     await session.commit()
 
 
-async def orm_delete_admin_exercise(session: AsyncSession, admin_exercise_id: int):
-    query = delete(AdminExercises).where(AdminExercises.id == admin_exercise_id)
-    await session.execute(query)
-    await session.commit()
+async def orm_delete_admin_exercise(session: AsyncSession, admin_exercise_id):
+    admin_exercise = await session.get(AdminExercises, admin_exercise_id)
+    if admin_exercise:
+        await session.delete(admin_exercise)
+        try:
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            raise e
 
 
 ##################################Уникальные упражнения user###############################################
@@ -471,6 +542,8 @@ async def orm_get_categories(session: AsyncSession, user_id: int):
     # Выполнение запроса
     result = await session.execute(query)
     return result.all()
+
+
 async def orm_get_category(session: AsyncSession, category_id: int):
     query = (
         select(ExerciseCategory).where(ExerciseCategory.id == category_id)

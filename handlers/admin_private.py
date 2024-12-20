@@ -140,7 +140,7 @@ async def add_name(message: types.Message, state: FSMContext):
 @admin_router.message(AddAdminExercise.description, F.text)
 async def add_description(message: types.Message, state: FSMContext, session: AsyncSession):
     await state.update_data(description=message.text)
-    categories = await orm_get_categories(session)
+    categories = await orm_get_categories(session, message.from_user.id)
     btns = {category.name: str(category.id) for category, _ in categories}
     await message.answer("Выберите категорию", reply_markup=get_callback_btns(btns=btns))
     await state.set_state(AddAdminExercise.category_id)
@@ -148,7 +148,7 @@ async def add_description(message: types.Message, state: FSMContext, session: As
 
 @admin_router.callback_query(AddAdminExercise.category_id)
 async def category_choice(callback: types.CallbackQuery, state: FSMContext, session: AsyncSession):
-    categories = await orm_get_categories(session)
+    categories = await orm_get_categories(session, callback.from_user.id)
     category_ids = [category.id for category, _ in categories]
     if int(callback.data) in category_ids:
         await callback.answer()

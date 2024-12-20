@@ -615,6 +615,7 @@ def get_category_exercise_btns(
         action: str,
         empty: bool,
         user_exercises: list,
+        actual_exercises: list,
         sizes: tuple[int] = (2, 2),
 ) -> InlineKeyboardMarkup:
     """
@@ -736,6 +737,37 @@ def get_category_exercise_btns(
             keyboard.add(InlineKeyboardButton(text=" ", callback_data=EMPTY_CALLBACK))
     if k == 1:
         sizes = (1, 2)
+
+    if actual_exercises:
+        last_exercise = actual_exercises[-1]
+        exercise_id_to_delete = last_exercise.id
+    else:
+        exercise_id_to_delete = None
+
+    delete_callback = MenuCallBack(
+        action="del",
+        level=level,
+        exercise_id=exercise_id_to_delete,
+        page=page,
+        training_day_id=training_day_id,
+        category_id=category_id,
+        program_id=program_id,
+        empty=empty,
+    ).pack()
+    if action.startswith("shd/"):
+        delete_callback = MenuCallBack(
+            action="shd/del",
+            level=level,
+            exercise_id=exercise_id_to_delete,
+            page=page,
+            training_day_id=training_day_id,
+            category_id=category_id,
+            program_id=program_id,
+            empty=empty,
+        ).pack()
+
+    delete_button = InlineKeyboardButton(text="🗑️ Удалить крайнее упражнение", callback_data=delete_callback)
+
     back_callback = MenuCallBack(
         level=level - 1,
         action="ctgs",
@@ -773,7 +805,10 @@ def get_category_exercise_btns(
     custom_exercises_button = InlineKeyboardButton(text="🫵 Ваши упражнения",
                                                    callback_data=custom_exercises)
     back_button = InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback)
-    keyboard.row(back_button, custom_exercises_button)
+    if actual_exercises:
+        keyboard.row(custom_exercises_button, delete_button, back_button)
+    else:
+        keyboard.row(back_button, custom_exercises_button)
     return keyboard.adjust(*sizes).as_markup()
 
 

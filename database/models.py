@@ -2,8 +2,13 @@ import uuid
 from typing import List
 from sqlalchemy.dialects.postgresql import UUID
 
-from sqlalchemy import String, Float, DateTime, func, Integer, ForeignKey, Text, BigInteger, Index, CheckConstraint
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy import (
+    String, Float, DateTime, func, Integer, ForeignKey, Text,
+    BigInteger, Index, CheckConstraint
+)
+from sqlalchemy.orm import (
+    DeclarativeBase, Mapped, mapped_column, relationship
+)
 
 
 class Base(DeclarativeBase):
@@ -27,6 +32,15 @@ class AdminExercises(Base):
 
     exercise_category: Mapped['ExerciseCategory'] = relationship(backref='admin_exercises', lazy='select')
 
+    # Связь с Exercise через admin_exercise_id
+    exercises_admin: Mapped[List['Exercise']] = relationship(
+        'Exercise',
+        back_populates='admin_exercise',
+        cascade='all, delete-orphan',
+        lazy='select',
+        passive_deletes=True
+    )
+
 
 class UserExercises(Base):
     __tablename__ = 'user_exercises'
@@ -39,6 +53,15 @@ class UserExercises(Base):
 
     exercise_category: Mapped['ExerciseCategory'] = relationship(backref='user_exercises', lazy='select')
     user: Mapped['User'] = relationship(backref='user_exercises', lazy='select')
+
+    # Связь с Exercise через user_exercise_id
+    exercises_user: Mapped[List['Exercise']] = relationship(
+        'Exercise',
+        back_populates='user_exercise',
+        cascade='all, delete-orphan',
+        lazy='select',
+        passive_deletes=True
+    )
 
 
 class Banner(Base):
@@ -103,7 +126,15 @@ class Exercise(Base):
     __table_args__ = (
         Index('idx_exercise_training_day_id', 'training_day_id'),
         CheckConstraint('base_reps > 0', name='check_base_reps_positive'),
-        CheckConstraint('base_sets > 0', name='check_base_sets_positive')
+        CheckConstraint('base_sets > 0', name='check_base_sets_positive'),
+        CheckConstraint(
+            """
+            (admin_exercise_id IS NOT NULL AND user_exercise_id IS NULL)
+            OR
+            (admin_exercise_id IS NULL AND user_exercise_id IS NOT NULL)
+            """,
+            name='check_admin_or_user_exercise'
+        )
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -114,6 +145,10 @@ class Exercise(Base):
     training_day_id: Mapped[int] = mapped_column(ForeignKey("training_day.id", ondelete='CASCADE'), nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    # Внешние ключи теперь nullable=True с проверкой в ограничении
+    admin_exercise_id: Mapped[int] = mapped_column(ForeignKey('admin_exercises.id', ondelete='CASCADE'), nullable=True)
+    user_exercise_id: Mapped[int] = mapped_column(ForeignKey('user_exercises.id', ondelete='CASCADE'), nullable=True)
+
     training_day: Mapped['TrainingDay'] = relationship("TrainingDay", back_populates="exercises", lazy='select')
     exercise_sets: Mapped[List['ExerciseSet']] = relationship(
         "ExerciseSet",
@@ -122,8 +157,23 @@ class Exercise(Base):
         lazy='select'
     )
 
-    # Добавлено поле sets
     sets: Mapped[List['Set']] = relationship("Set", back_populates="exercise", lazy='select')
+
+    # Связь с AdminExercises
+    admin_exercise: Mapped['AdminExercises'] = relationship(
+        "AdminExercises",
+        back_populates="exercises_admin",
+        lazy='select',
+        passive_deletes=True
+    )
+
+    # Связь с UserExercises
+    user_exercise: Mapped['UserExercises'] = relationship(
+        "UserExercises",
+        back_populates="exercises_user",
+        lazy='select',
+        passive_deletes=True
+    )
 
 
 class ExerciseSet(Base):

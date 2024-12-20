@@ -406,23 +406,37 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
         user_exercises = await orm_get_exercises(session, training_day_id)
         user_custom_exercises = await orm_get_user_exercises_in_category(session, category_id, user_id)
 
-        # Если action начинается на "add_..." - добавляем упражнение из админских в пользовательский список
+        # Если action начинается на "add_..." - добавляем упражнение из админских или пользовательских в список
         if get_action_part(action).startswith("add_"):
             if exercise_id:
-                if get_action_part(action).__contains__("custom"):
+                if "custom" in get_action_part(action):
                     exercise = await orm_get_user_exercise(session, exercise_id)
+                    exercise_type = 'user'
                 else:
                     exercise = await orm_get_admin_exercise(session, exercise_id)
+                    exercise_type = 'admin'
 
                 if exercise:
-                    await orm_add_exercise(session, {
+                    # Подготовка данных для добавления упражнения
+                    add_data = {
                         "name": exercise.name,
                         "description": exercise.description,
-                    }, training_day_id)
+                    }
+
+                    if exercise_type == 'admin':
+                        add_data['admin_exercise_id'] = exercise.id
+                    elif exercise_type == 'user':
+                        add_data['user_exercise_id'] = exercise.id
+
+                    # Добавление упражнения с указанием типа
+                    await orm_add_exercise(session, add_data, training_day_id, exercise_type)
                     user_exercises = await orm_get_exercises(session, training_day_id)
+
+                    # Добавление сетов для нового упражнения
                     for _ in range(user_exercises[-1].base_sets):
                         await orm_add_exercise_set(session, user_exercises[-1].id, user_exercises[-1].base_reps)
-        if empty is False and category_id:
+
+        if not empty and category_id:
             caption_text = exercises_in_program(user_exercises)
 
             user_image = InputMediaPhoto(
@@ -435,7 +449,7 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
                                               training_day_id=training_day_id,
                                               page=page,
                                               template_exercises=admin_exercises,
-                                              user_exercises=user_custom_exercises,
+                                              user_exercises=user_custom_exercises, actual_exercises=user_exercises,
                                               action=action, category_id=category_id, empty=empty)
 
         else:
@@ -445,13 +459,13 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
                 user_image = InputMediaPhoto(
                     media=banner.image,
                     caption=f"<strong>{banner.description + user_program.name}\n\n{caption_text}\n\n"
-                            f"Пользовательские упражения:</strong>",
+                            f"Пользовательские упражнения:</strong>",
                 )
             else:
                 user_image = InputMediaPhoto(
                     media=banner.image,
                     caption=f"<strong>{banner.description + user_program.name}\n\n{caption_text}\n\n"
-                            f"Пользовательские упражения:\n\n"
+                            f"Пользовательские упражнения:\n\n"
                             f"{exercises_in_program(user_custom_exercises)}</strong>",
                 )
             kbds = get_category_exercise_btns(level=level,
@@ -460,7 +474,7 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
                                               page=page,
                                               user_exercises=user_custom_exercises,
                                               category_id=None,
-                                              action=action, empty=empty)
+                                              action=action, empty=empty, actual_exercises=user_exercises)
 
         return user_image, kbds
     except Exception as e:
