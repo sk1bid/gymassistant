@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from sqlalchemy import select, update, delete, func, union_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -114,7 +112,7 @@ async def orm_add_exercise(session: AsyncSession, data: dict, training_day_id: i
     Добавляет новое упражнение в базу данных.
 
     :param session: Асинхронная сессия SQLAlchemy.
-    :param data: Словарь с данными упражнения (name, description и т.д.).
+    :param data: Словарь с данными упражнения (name, description, circle_training и т.д.).
     :param training_day_id: ID дня тренировки, к которому относится упражнение.
     :param exercise_type: Тип упражнения ('admin' или 'user').
     """
@@ -149,7 +147,8 @@ async def orm_add_exercise(session: AsyncSession, data: dict, training_day_id: i
         description=data['description'],
         position=max_position + 1,
         admin_exercise_id=admin_exercise_id,
-        user_exercise_id=user_exercise_id
+        user_exercise_id=user_exercise_id,
+        circle_training=data.get('circle_training', False)  # Безопасное получение поля
     )
 
     session.add(obj)
@@ -159,8 +158,37 @@ async def orm_add_exercise(session: AsyncSession, data: dict, training_day_id: i
         await session.rollback()
         raise e
 
+
 async def orm_get_exercises(session: AsyncSession, training_day_id: int):
     query = select(Exercise).where(Exercise.training_day_id == training_day_id).order_by(Exercise.position)
+    result = await session.execute(query)
+    return result.scalars().all()
+
+
+async def orm_get_circular_exercises(session: AsyncSession, training_day_id: int):
+    """
+    Возвращает все упражнения для заданного тренировочного дня,
+    которые помечены как круговые (circle_training=True).
+    """
+    query = (
+        select(Exercise)
+        .where(Exercise.training_day_id == training_day_id, Exercise.circle_training == True)
+        .order_by(Exercise.position)
+    )
+    result = await session.execute(query)
+    return result.scalars().all()
+
+
+async def orm_get_standard_exercises(session: AsyncSession, training_day_id: int):
+    """
+    Возвращает все упражнения для заданного тренировочного дня,
+    которые НЕ помечены как круговые (circle_training=False).
+    """
+    query = (
+        select(Exercise)
+        .where(Exercise.training_day_id == training_day_id, Exercise.circle_training == False)
+        .order_by(Exercise.position)
+    )
     result = await session.execute(query)
     return result.scalars().all()
 
@@ -177,7 +205,8 @@ async def orm_update_exercise(session: AsyncSession, exercise_id: int, data: dic
 
     :param session: Асинхронная сессия SQLAlchemy.
     :param exercise_id: ID упражнения для обновления.
-    :param data: Словарь с обновляемыми данными (name, description, reps, sets, training_day_id, admin_exercise_id, user_exercise_id).
+    :param data: Словарь с обновляемыми данными (name, description, reps, sets, training_day_id,
+                 admin_exercise_id, user_exercise_id, circle_training, exercise_type).
     """
     update_data = {}
 
@@ -191,6 +220,8 @@ async def orm_update_exercise(session: AsyncSession, exercise_id: int, data: dic
         update_data['base_sets'] = data['sets']
     if 'training_day_id' in data:
         update_data['training_day_id'] = data['training_day_id']
+    if 'circle_training' in data:
+        update_data['circle_training'] = data['circle_training']
 
     # Управление типом упражнения при обновлении
     if 'exercise_type' in data:
@@ -448,7 +479,7 @@ async def orm_delete_admin_exercise(session: AsyncSession, admin_exercise_id):
             raise e
 
 
-##################################Уникальные упражнения user###############################################
+################################## Уникальные упражнения user ###############################################
 async def orm_add_user_exercise(session: AsyncSession, data: dict):
     obj = UserExercises(
         name=data['name'],
@@ -473,9 +504,11 @@ async def orm_get_user_exercises(session: AsyncSession, user_id: int):
 
 
 async def orm_get_user_exercises_in_category(session: AsyncSession, category_id: int, user_id: int):
-    query = ((select(UserExercises)
-              .where(UserExercises.category_id == category_id))
-             .where(UserExercises.user_id == user_id))
+    query = (
+        select(UserExercises)
+        .where(UserExercises.category_id == category_id)
+        .where(UserExercises.user_id == user_id)
+    )
     result = await session.execute(query)
     return result.scalars().all()
 

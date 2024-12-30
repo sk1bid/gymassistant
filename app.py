@@ -20,7 +20,7 @@ from handlers.user_group import user_group_router
 
 # Настраиваем логирование
 logging.basicConfig(
-    level=logging.INFO,  # Уровень логирования, можно изменить на DEBUG для более подробных логов
+    level=logging.DEBUG,  # Уровень логирования, можно изменить на DEBUG для более подробных логов
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Формат сообщений
     handlers=[
         logging.StreamHandler()  # Вывод логов в консоль
@@ -29,7 +29,6 @@ logging.basicConfig(
 
 # Подавляем лишние логи от SQLAlchemy и aiogram
 logging.getLogger('sqlalchemy.engine').setLevel(logging.ERROR)
-logging.getLogger('aiogram').setLevel(logging.ERROR)
 
 # Создаём экземпляр бота
 bot = Bot(token=os.getenv('TOKEN'), default=DefaultBotProperties(parse_mode=ParseMode.HTML))

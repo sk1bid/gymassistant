@@ -4,7 +4,7 @@ from sqlalchemy.dialects.postgresql import UUID
 
 from sqlalchemy import (
     String, Float, DateTime, func, Integer, ForeignKey, Text,
-    BigInteger, Index, CheckConstraint
+    BigInteger, Index, CheckConstraint, Boolean
 )
 from sqlalchemy.orm import (
     DeclarativeBase, Mapped, mapped_column, relationship
@@ -144,6 +144,7 @@ class Exercise(Base):
     base_reps: Mapped[int] = mapped_column(Integer(), default=10)
     training_day_id: Mapped[int] = mapped_column(ForeignKey("training_day.id", ondelete='CASCADE'), nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
+    circle_training: Mapped[bool] = mapped_column(Boolean(), default=False)
 
     # Внешние ключи теперь nullable=True с проверкой в ограничении
     admin_exercise_id: Mapped[int] = mapped_column(ForeignKey('admin_exercises.id', ondelete='CASCADE'), nullable=True)

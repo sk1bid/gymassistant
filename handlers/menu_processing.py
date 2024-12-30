@@ -49,12 +49,54 @@ from utils.separator import get_action_part
 WEEK_DAYS_RU = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
 
 
-def exercises_in_program(user_exercises: list):
-    if user_exercises:
-        caption_text = "<b>Ваши упражнения:</b>\n\n" + "\n".join(
-            [f"🔘 <b>{ex.name}</b>" for ex in user_exercises])
-    else:
-        caption_text = "<strong>Упражнений пока нет. Добавьте новое упражнение!</strong>"
+def exercises_in_program(user_exercises: list, circle_training: bool = False):
+    """
+    Форматирует список упражнений с разделителями для круговой тренировки и
+    отображает сообщение о режиме круговой тренировки, если он активен.
+
+    :param user_exercises: Список упражнений.
+    :param circle_training: Флаг, указывающий, активна ли круговая тренировка.
+    :return: Отформатированный текст для отображения.
+    """
+    caption_text = "<b>Ваши упражнения:</b>\n\n"
+
+    if not user_exercises:
+        if circle_training:
+            # Пользователь начал круговую тренировку, но упражнений ещё нет
+            caption_text += (
+                "<strong>Вы находитесь в режиме круговой тренировки. Добавьте круговые упражнения.</strong>"
+            )
+        else:
+            caption_text += "<strong>Упражнений пока нет. Добавьте новое упражнение!</strong>"
+        return caption_text
+
+    in_circular_block = False  # Флаг для отслеживания нахождения внутри круговой тренировки
+
+    # Проверяем, есть ли круговые упражнения
+    circular_present = any(ex.circle_training for ex in user_exercises)
+
+    for ex in user_exercises:
+        if ex.circle_training and not in_circular_block:
+            # Начало круговой тренировки перед первым круговым упражнением
+            caption_text += "<strong>Начало круговой тренировки</strong>\n"
+            in_circular_block = True
+        elif not ex.circle_training and in_circular_block:
+            # Конец круговой тренировки после последнего кругового упражнения
+            caption_text += "<strong>Конец круговой тренировки</strong>\n"
+            in_circular_block = False
+
+        # Добавляем упражнение с соответствующей иконкой
+        icon = "🔄" if ex.circle_training else "🔘"
+        caption_text += f"{icon} <b>{ex.name}</b>\n"
+
+    # Если список упражнений заканчивается круговой тренировкой, добавляем конец блока
+    if in_circular_block:
+        caption_text += "<strong>Конец круговой тренировки</strong>\n"
+
+    # Добавляем сообщение о режиме круговой тренировки, если он активен
+    if circle_training:
+        caption_text += "\n<strong>Вы находитесь в режиме круговой тренировки. Добавьте круговые упражнения.</strong>"
+
     return caption_text
 
 
@@ -355,7 +397,7 @@ async def edit_training_day(session: AsyncSession, level: int, training_program_
 
 
 async def show_categories(session: AsyncSession, level: int, training_program_id: int, training_day_id: int, page: int,
-                          action: str, user_id: int):
+                          action: str, user_id: int, circle_training: bool):
     try:
         user_exercises = await orm_get_exercises(session, training_day_id)
         user_data = await orm_get_user_by_id(session, user_id)
@@ -365,7 +407,7 @@ async def show_categories(session: AsyncSession, level: int, training_program_id
 
         user_program = await orm_get_program(session, training_program_id)
         banner = await orm_get_banner(session, "user_program")
-        caption_text = exercises_in_program(user_exercises)
+        caption_text = exercises_in_program(user_exercises, circle_training)
 
         user_image = InputMediaPhoto(
             media=banner.image,
@@ -382,6 +424,7 @@ async def show_categories(session: AsyncSession, level: int, training_program_id
             action=action,
             user_name=user_name,
             len_custom=len(user_custom_exercises),
+            circle_training=circle_training,
         )
 
         return user_image, kbds
@@ -397,7 +440,7 @@ async def show_categories(session: AsyncSession, level: int, training_program_id
 
 async def show_exercises_in_category(session: AsyncSession, level: int, exercise_id: int, training_day_id: int,
                                      page: int, action: str, training_program_id: int, category_id: int, user_id: int,
-                                     empty: bool):
+                                     empty: bool, circle_training: bool):
     try:
         banner = await orm_get_banner(session, "user_program")
         category = await orm_get_category(session, category_id)
@@ -421,6 +464,7 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
                     add_data = {
                         "name": exercise.name,
                         "description": exercise.description,
+                        "circle_training": circle_training,
                     }
 
                     if exercise_type == 'admin':
@@ -437,7 +481,7 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
                         await orm_add_exercise_set(session, user_exercises[-1].id, user_exercises[-1].base_reps)
 
         if not empty and category_id:
-            caption_text = exercises_in_program(user_exercises)
+            caption_text = exercises_in_program(user_exercises, circle_training)
 
             user_image = InputMediaPhoto(
                 media=banner.image,
@@ -450,11 +494,12 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
                                               page=page,
                                               template_exercises=admin_exercises,
                                               user_exercises=user_custom_exercises, actual_exercises=user_exercises,
-                                              action=action, category_id=category_id, empty=empty)
+                                              action=action, category_id=category_id, empty=empty,
+                                              circle_training=circle_training)
 
         else:
             user_custom_exercises = await orm_get_user_exercises(session, user_id)
-            caption_text = exercises_in_program(user_exercises)
+            caption_text = exercises_in_program(user_exercises, circle_training)
             if user_custom_exercises:
                 user_image = InputMediaPhoto(
                     media=banner.image,
@@ -474,7 +519,8 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
                                               page=page,
                                               user_exercises=user_custom_exercises,
                                               category_id=None,
-                                              action=action, empty=empty, actual_exercises=user_exercises)
+                                              action=action, empty=empty, actual_exercises=user_exercises,
+                                              circle_training=circle_training)
 
         return user_image, kbds
     except Exception as e:
@@ -542,7 +588,7 @@ async def exercise_settings(session: AsyncSession, level: int, exercise_id: int,
 
 async def custom_exercises(session: AsyncSession, level: int, training_day_id: int,
                            page: int, action: str, training_program_id: int, category_id: int, user_id: int,
-                           empty: bool, exericse_id: int):
+                           empty: bool, exericise_id: int, circle_training: bool):
     try:
         if empty is False and category_id:
             custom_user_exercises = await orm_get_user_exercises_in_category(session, category_id, user_id)
@@ -564,7 +610,7 @@ async def custom_exercises(session: AsyncSession, level: int, training_day_id: i
 
             kbds = get_custom_exercise_btns(level=level, action=action, program_id=training_program_id, page=page,
                                             training_day_id=training_day_id, category_id=category_id, empty=empty,
-                                            user_exercises=custom_user_exercises, exercise_id=exericse_id)
+                                            user_exercises=custom_user_exercises, exercise_id=exericise_id, circle_training=circle_training)
         else:
             custom_user_exercises = await orm_get_user_exercises(session, user_id)
             banner = await orm_get_banner(session, "user_program")
@@ -582,7 +628,7 @@ async def custom_exercises(session: AsyncSession, level: int, training_day_id: i
 
             kbds = get_custom_exercise_btns(level=level, action=action, program_id=training_program_id, page=page,
                                             training_day_id=training_day_id, category_id=category_id, empty=empty,
-                                            user_exercises=custom_user_exercises, exercise_id=exericse_id)
+                                            user_exercises=custom_user_exercises, exercise_id=exericise_id, circle_training=circle_training)
 
         return user_image, kbds
 
@@ -599,12 +645,11 @@ async def custom_exercises(session: AsyncSession, level: int, training_day_id: i
 async def get_menu_content(session: AsyncSession, level: int, action: str, training_program_id: int = None,
                            exercise_id: int = None, page: int = None, training_day_id: int = None, user_id: int = None,
                            category_id: int = None, month: int = None, year: int = None, set_id: int = None,
-                           empty: bool = False):
+                           empty: bool = False, circle_training: bool = False):
     start_time = time.monotonic()
     try:
-        # В этом коде мы исходим из того, что action теперь используется вместо menu_name.
+
         if level == 0:
-            # Главный экран
             return await main_menu(session)
 
         elif level == 1:
@@ -640,7 +685,7 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
                                             training_program_id)
             else:
                 return await show_categories(session, level, training_program_id, training_day_id, page, action,
-                                             user_id)
+                                             user_id, circle_training)
 
         elif level == 6:
             # Настройки упражнения или список упражнений в категории
@@ -649,12 +694,13 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
                 return await exercise_settings(session, level, exercise_id, training_day_id, page, action,
                                                training_program_id)
             return await show_exercises_in_category(session, level, exercise_id, training_day_id, page, action,
-                                                    training_program_id, category_id, user_id, empty)
+                                                    training_program_id, category_id, user_id, empty, circle_training)
 
         elif level == 7:
             # Пользовательские упражнения
             return await custom_exercises(session, level, training_day_id, page, action,
-                                          training_program_id, category_id, user_id, empty, exercise_id)
+                                          training_program_id, category_id, user_id, empty, exercise_id,
+                                          circle_training)
 
         else:
             logging.warning(f"Неизвестный уровень меню: {level}")
