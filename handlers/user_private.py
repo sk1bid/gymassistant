@@ -250,6 +250,7 @@ async def clicked_btn(callback_data: MenuCallBack, state: FSMContext, selected_i
         user_id=callback.from_user.id,
         category_id=callback_data.category_id,
         empty=callback_data.empty,
+        circle_training=callback_data.circle_training,
     )
 
     await callback.message.edit_media(media=media, reply_markup=reply_markup)
@@ -295,6 +296,7 @@ async def add_exercise_callback_handler(
         user_id=user_id,
         origin=origin,
         empty=empty,
+
     )
     await state.set_state(AddExercise.name)
 
@@ -453,6 +455,7 @@ async def category_choice(callback: types.CallbackQuery, state: FSMContext,
             training_program_id=data.get("program_id"),
             user_id=data.get("user_id"),
             empty=data.get("empty"),
+
         )
         await callback.message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
         await state.clear()
@@ -506,6 +509,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 month=callback_data.month,
                 set_id=callback_data.set_id,
                 empty=callback_data.empty,
+                circle_training=callback_data.circle_training,
             )
 
             if action.startswith("shd/"):
@@ -523,6 +527,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     month=callback_data.month,
                     set_id=callback_data.set_id,
                     empty=callback_data.empty,
+                    circle_training=callback_data.circle_training,
                 )
 
             await callback.message.edit_media(media=media, reply_markup=reply_markup)
@@ -548,6 +553,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 month=callback_data.month,
                 set_id=callback_data.set_id,
                 empty=callback_data.empty,
+                circle_training=callback_data.circle_training,
             )
 
             if action.startswith("shd/"):
@@ -565,6 +571,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     month=callback_data.month,
                     set_id=callback_data.set_id,
                     empty=callback_data.empty,
+                    circle_training=callback_data.circle_training,
                 )
             await callback.message.edit_media(media=media, reply_markup=reply_markup)
 
@@ -591,6 +598,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 month=callback_data.month,
                 set_id=callback_data.set_id,
                 empty=callback_data.empty,
+                circle_training=callback_data.circle_training,
             )
             await callback.message.edit_media(media=media, reply_markup=reply_markup)
             await callback.answer("Программа удалена.")
@@ -637,6 +645,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 month=callback_data.month,
                 set_id=callback_data.set_id,
                 empty=callback_data.empty,
+                circle_training=callback_data.circle_training,
             )
             if action.startswith("shd/"):
                 media, reply_markup = await get_menu_content(
@@ -652,6 +661,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     year=callback_data.year,
                     month=callback_data.month,
                     set_id=callback_data.set_id,
+                    circle_training=callback_data.circle_training,
                 )
             await callback.message.edit_media(media=media, reply_markup=reply_markup)
             await callback.answer()
@@ -693,6 +703,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     month=callback_data.month,
                     set_id=callback_data.set_id,
                     empty=callback_data.empty,
+                    circle_training=callback_data.circle_training,
                 )
                 await callback.message.edit_media(media=media, reply_markup=reply_markup)
                 user_data = await state.get_data()
@@ -720,6 +731,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 month=callback_data.month,
                 set_id=callback_data.set_id,
                 empty=callback_data.empty,
+                circle_training=callback_data.circle_training,
             )
             await state.update_data(selected_exercise_id=None, selected_program_id=None)
             await callback.message.edit_media(media=media, reply_markup=reply_markup)
