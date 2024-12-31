@@ -774,15 +774,15 @@ async def handle_start_training_process(
     await state.set_state(TrainingProcess.exercise_index)
     await state.update_data(
         training_day_id=callback_data.training_day_id,
-        exercise_index=0,  # было в вашем коде
-        set_index=1,  # ...
+        exercise_index=0,
+        set_index=1,
         training_session_id=str(training_session_id),
     )
 
     # Считываем упражнения (как обычно)
     exercises = await orm_get_exercises(session, callback_data.training_day_id)
     if not exercises:
-        await callback.message.answer("Нет упражнений в этом тренировочном дне.")
+        await callback.answer("Нет упражнений в этом тренировочном дне.")
         await state.clear()
         await callback.answer()
         return
@@ -793,59 +793,19 @@ async def handle_start_training_process(
     await state.update_data(blocks=[[ex.id for ex in block] for block in blocks], block_index=0)
 
     if not blocks:
-        await callback.message.answer("Нет упражнений.")
+        await callback.answer("Нет упражнений.")
         await state.clear()
         await callback.answer()
         return
 
     # Создаём одно служебное сообщение
     bot_msg = await callback.message.answer("Подготовка к тренировке...")
+    await asyncio.sleep(1)
     await state.update_data(bot_message_id=bot_msg.message_id)
 
     # Переходим к первому блоку
     await process_current_block(callback.message, state, session)
     await callback.answer()
-
-
-@user_private_router.callback_query(MenuCallBack.filter(F.action == "training_process"))
-async def start_training_process(
-        callback: types.CallbackQuery,
-        callback_data: MenuCallBack,
-        state: FSMContext,
-        session: AsyncSession
-):
-    """
-    Точка входа: пользователь нажал "Начать тренировку".
-    1) Получаем упражнения (orm_get_exercises)
-    2) Группируем их (group_exercises_into_blocks)
-    3) Сохраняем blocks + block_index=0
-    4) Создаём служебное сообщение (bot_message_id)
-    5) Переходим к первому блоку (process_current_block)
-    """
-    await callback.answer()
-
-    training_day_id = callback_data.training_day_id
-    training_session_id = str(uuid.uuid4())
-
-    exercises = await orm_get_exercises(session, training_day_id)
-    if not exercises:
-        await callback.message.answer("Нет упражнений в этом тренировочном дне.")
-        await state.clear()
-        return
-
-    blocks = group_exercises_into_blocks(exercises)
-
-    await state.update_data(
-        training_day_id=training_day_id,
-        training_session_id=training_session_id,
-        blocks=[[ex.id for ex in block] for block in blocks],
-        block_index=0
-    )
-
-    bot_msg = await callback.message.answer("Подготовка к тренировке...")
-    await state.update_data(bot_message_id=bot_msg.message_id)
-
-    await process_current_block(callback.message, state, session)
 
 
 def group_exercises_into_blocks(exercises: list):
@@ -928,7 +888,6 @@ async def start_standard_block(message: types.Message, state: FSMContext, sessio
 
     first_ex = ex_objs[0]
     text = (
-        "Обычный блок упражнений.\n\n"
         f"Упражнение: {first_ex.name}\n{first_ex.description}\n\n"
         f"Подход 1 из {first_ex.base_sets}\nВведите количество повторений:"
     )
@@ -959,7 +918,10 @@ async def start_circuit_block(message: types.Message, state: FSMContext, session
 
     first_ex = ex_objs[0]
     text = (
-        f"Начинаем КРУГОВОЙ блок.\n\n"
+        f"Блок круговых упражнений.\n\n"
+        f"Необходимо подготовить оборудование для каждого упражнения\n\n"
+        f"Между упражнениями отдых {CIRCULAR_REST_BETWEEN_ROUNDS} сек.\n\n"
+        f"После каждого раунда отдых 5 минут\n"
         f"Раунд 1 из {CIRCULAR_ROUNDS}\n\n"
         f"{first_ex.name}\n{first_ex.description}\n\n"
         "Введите количество повторений:"
