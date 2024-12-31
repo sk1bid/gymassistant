@@ -532,13 +532,57 @@ def get_category_btns(
         user_name: str,
         len_custom: int,
         circle_training: bool,
-        sizes: tuple[int] = (3, 3),
+        sizes: tuple[int] = (1, 3, 3, 3, 1),
 ) -> InlineKeyboardMarkup:
     """
     Возвращает клавиатуру категорий упражнений.
     Каждая категория — кнопка с количеством упражнений.
     """
     keyboard = InlineKeyboardBuilder()
+    start_callback = MenuCallBack(
+        action=f"start_circle",
+        level=level,
+        page=page,
+        training_day_id=training_day_id,
+        program_id=program_id,
+        circle_training=True,
+    ).pack()
+
+    end_callback = MenuCallBack(
+        action=f"end_circle",
+        level=level,
+        page=page,
+        training_day_id=training_day_id,
+        program_id=program_id,
+        circle_training=False,
+    ).pack()
+
+    if action.startswith("shd/"):
+        start_callback = MenuCallBack(
+            action=f"shd/start_circle",
+            level=level,
+            page=page,
+            training_day_id=training_day_id,
+            program_id=program_id,
+            circle_training=True
+        ).pack()
+
+        end_callback = MenuCallBack(
+            action=f"shd/end_circle",
+            level=level,
+            page=page,
+            training_day_id=training_day_id,
+            program_id=program_id,
+            circle_training=False
+        ).pack()
+    start_button = InlineKeyboardButton(text="🔴 Круговая тренировка", callback_data=start_callback)
+    end_button = InlineKeyboardButton(text="🟢 Круговая тренировка", callback_data=end_callback)
+
+    if circle_training:
+        keyboard.row(end_button)
+    else:
+        keyboard.row(start_button)
+
     custom_exercise = MenuCallBack(
         action=f"ctg",
         level=level + 1,
@@ -584,8 +628,8 @@ def get_category_btns(
         button = InlineKeyboardButton(text=button_text, callback_data=callback)
         keyboard.add(button)
 
-    padding = (-len(categories)) % sizes[0] - 1
-    if len(categories) >= 3:
+    padding = (-len(categories)) % sizes[1] -1
+    if len(categories) > 1:
         for _ in range(padding):
             keyboard.add(InlineKeyboardButton(text=" ", callback_data=EMPTY_CALLBACK))
 

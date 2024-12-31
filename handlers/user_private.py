@@ -296,7 +296,7 @@ async def add_exercise_callback_handler(
         user_id=user_id,
         origin=origin,
         empty=empty,
-
+        circle_training=callback_data.circle_training,
     )
     await state.set_state(AddExercise.name)
 
@@ -351,6 +351,7 @@ async def cancel_add_exercise(message: types.Message, state: FSMContext, session
         training_program_id=data.get("program_id"),
         user_id=data.get("user_id"),
         empty=data.get("empty"),
+        circle_training=data.get("circle_training")
     )
     await state.clear()
     await message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
@@ -401,6 +402,7 @@ async def add_exercise_description(
                 training_program_id=data.get("program_id"),
                 user_id=data.get("user_id"),
                 empty=data.get("empty"),
+                circle_training=data.get("circle_training")
             )
             await message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
         else:
@@ -455,6 +457,7 @@ async def category_choice(callback: types.CallbackQuery, state: FSMContext,
             training_program_id=data.get("program_id"),
             user_id=data.get("user_id"),
             empty=data.get("empty"),
+            circle_training=data.get("circle_training")
 
         )
         await callback.message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
@@ -1174,7 +1177,7 @@ async def finish_training(message: types.Message, state: FSMContext, session: As
 
     # Формируем итог
     all_exs = await orm_get_exercises(session, training_day_id)
-    result_message = "Тренировка завершена, отличная работа!\n\nВаши результаты:\n"
+    result_message = "Тренировка завершена, отличная работа!\n/\nВаши результаты:\n"
     for ex in all_exs:
         result_message += f"\nУпражнение: {ex.name}\n"
         sets = await orm_get_sets_by_session(session, ex.id, training_session_id)
