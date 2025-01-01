@@ -296,7 +296,7 @@ async def program_settings(session: AsyncSession, level: int, training_program_i
     try:
         user_program = await orm_get_program(session, training_program_id)
         user_data = await orm_get_user_by_id(session, user_id)
-        active_program = True if user_data.actual_program_id else False
+        active_program = True if user_data.actual_program_id == user_program.id else False
 
         # Если действия переключают программу
         if action == "turn_on_prgm":
@@ -307,7 +307,7 @@ async def program_settings(session: AsyncSession, level: int, training_program_i
             active_program = False
 
         banner = await orm_get_banner(session, "user_program")
-        indicator = "🟢" if active_program else "🔴"
+        indicator = "🟢" if user_data.actual_program_id == user_program.id else "🔴"
         banner_image = InputMediaPhoto(
             media=banner.image,
             caption=f"<strong>{banner.description + user_program.name + ' ' + indicator}</strong>"

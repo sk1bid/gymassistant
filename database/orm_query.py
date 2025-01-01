@@ -71,8 +71,8 @@ async def orm_get_program(session: AsyncSession, program_id: int):
 
 
 async def orm_delete_program(session: AsyncSession, program_id: int):
-    await session.execute(delete(TrainingDay).where(TrainingDay.training_program_id == program_id))
-    await session.execute(delete(TrainingProgram).where(TrainingProgram.id == program_id))
+    query = delete(TrainingProgram).where(TrainingProgram.id == program_id)
+    await session.execute(query)
     await session.commit()
 
 

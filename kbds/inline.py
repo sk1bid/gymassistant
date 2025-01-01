@@ -362,7 +362,7 @@ def get_program_stgs_btns(
         keyboard.add(
             InlineKeyboardButton(
                 text="❌ Подтвердите удаление",
-                callback_data=MenuCallBack(level=level - 2, action="prm_del", program_id=user_program_id).pack()
+                callback_data=MenuCallBack(level=level - 2, action="prgm_del", program_id=user_program_id).pack()
             )
         )
     else:

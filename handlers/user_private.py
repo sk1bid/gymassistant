@@ -584,7 +584,6 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
 
         elif get_action_part(action) == "prgm_del":
             await orm_delete_program(session, callback_data.program_id)
-            await orm_turn_on_off_program(session, callback.from_user.id, None)
             await state.update_data(selected_program_id=None)
 
             media, reply_markup = await get_menu_content(
