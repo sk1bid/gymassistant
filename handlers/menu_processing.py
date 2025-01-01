@@ -448,7 +448,6 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
         admin_exercises = await orm_get_admin_exercises_in_category(session, category_id)
         user_exercises = await orm_get_exercises(session, training_day_id)
         user_custom_exercises = await orm_get_user_exercises_in_category(session, category_id, user_id)
-
         # Если action начинается на "add_..." - добавляем упражнение из админских или пользовательских в список
         if get_action_part(action).startswith("add_"):
             if exercise_id:

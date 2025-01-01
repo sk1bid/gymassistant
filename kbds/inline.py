@@ -628,7 +628,7 @@ def get_category_btns(
         button = InlineKeyboardButton(text=button_text, callback_data=callback)
         keyboard.add(button)
 
-    padding = (-len(categories)) % sizes[1] -1
+    padding = (-len(categories)) % sizes[1] - 1
     if len(categories) > 1:
         for _ in range(padding):
             keyboard.add(InlineKeyboardButton(text=" ", callback_data=EMPTY_CALLBACK))
@@ -666,14 +666,13 @@ def get_category_exercise_btns(
         empty: bool,
         user_exercises: list,
         actual_exercises: list,
-        circle_training: bool,
-        sizes: tuple[int] = (1, 2, 2)) -> InlineKeyboardMarkup:
+        circle_training: bool
+):
     """
     Возвращает клавиатуру упражнений по выбранной категории.
     Есть кнопка для добавления своего упражнения и возврата назад.
     """
     keyboard = InlineKeyboardBuilder()
-    k = 0
     if actual_exercises:
         last_exercise = actual_exercises[-1]
         exercise_id_to_delete = last_exercise.id
@@ -726,12 +725,6 @@ def get_category_exercise_btns(
     start_button = InlineKeyboardButton(text="🔴 Круговая тренировка", callback_data=start_callback)
     end_button = InlineKeyboardButton(text="🟢 Круговая тренировка", callback_data=end_callback)
     if not empty:
-
-        if circle_training:
-            keyboard.add(end_button)
-        else:
-            keyboard.add(start_button)
-
         if action.startswith("add_"):
             action = action.split("_", 1)[-1]
         if user_exercises:
@@ -759,7 +752,6 @@ def get_category_exercise_btns(
                     ).pack()
                 button = InlineKeyboardButton(text=f"➕ {exercise.name}", callback_data=callback)
                 keyboard.add(button)
-                k += 1
         if template_exercises:
             for exercise in template_exercises:
                 callback = MenuCallBack(
@@ -784,15 +776,10 @@ def get_category_exercise_btns(
                         circle_training=circle_training,
                     ).pack()
                 button = InlineKeyboardButton(text=f"➕ {exercise.name}", callback_data=callback)
-                keyboard.add(button)
-                k += 1
+                keyboard.row(button)
     else:
         if action.startswith("add_"):
             action = action.split("_", 1)[-1]
-        if circle_training:
-            keyboard.add(end_button)
-        else:
-            keyboard.add(start_button)
         if user_exercises:
             for exercise in user_exercises:
                 callback = MenuCallBack(
@@ -819,8 +806,7 @@ def get_category_exercise_btns(
                         circle_training=circle_training,
                     ).pack()
                 button = InlineKeyboardButton(text=f"➕ {exercise.name}", callback_data=callback)
-                keyboard.add(button)
-                k += 1
+                keyboard.row(button)
         if template_exercises:
             for exercise in template_exercises:
                 callback = MenuCallBack(
@@ -847,15 +833,7 @@ def get_category_exercise_btns(
                         circle_training=circle_training,
                     ).pack()
                 button = InlineKeyboardButton(text=f"➕ {exercise.name}", callback_data=callback)
-                keyboard.add(button)
-                k += 1
-
-    padding = (-k) % sizes[1]
-    if k > 1:
-        for _ in range(padding):
-            keyboard.add(InlineKeyboardButton(text=" ", callback_data=EMPTY_CALLBACK))
-    if k == 1:
-        sizes = (1, 1, 2)
+                keyboard.row(button)
 
     delete_callback = MenuCallBack(
         action="del",
@@ -921,14 +899,21 @@ def get_category_exercise_btns(
             circle_training=circle_training
         ).pack()
 
+    if circle_training:
+        keyboard.row(end_button)
+    else:
+        keyboard.row(start_button)
+
     custom_exercises_button = InlineKeyboardButton(text="🫵 Ваши упражнения",
                                                    callback_data=custom_exercises)
     back_button = InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback)
     if actual_exercises:
-        keyboard.row(custom_exercises_button, delete_button, back_button)
+        keyboard.row(custom_exercises_button, delete_button)
+        keyboard.row(back_button)
     else:
-        keyboard.row(custom_exercises_button, back_button)
-    return keyboard.adjust(*sizes).as_markup()
+        keyboard.row(custom_exercises_button)
+        keyboard.row(back_button)
+    return keyboard.as_markup()
 
 
 def get_custom_exercise_btns(
