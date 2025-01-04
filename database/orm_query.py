@@ -1,8 +1,18 @@
 from sqlalchemy import select, update, delete, func, union_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from database.models import User, Banner, TrainingProgram, TrainingDay, Exercise, Set, AdminExercises, ExerciseCategory, \
-    ExerciseSet, UserExercises
+from database.models import (
+    User,
+    Banner,
+    TrainingProgram,
+    TrainingDay,
+    Exercise,
+    Set,
+    AdminExercises,
+    ExerciseCategory,
+    ExerciseSet,
+    UserExercises
+)
 
 
 ############### Работа с баннерами (информационными страницами) ###############
@@ -116,7 +126,7 @@ async def orm_add_exercise(session: AsyncSession, data: dict, training_day_id: i
     :param training_day_id: ID дня тренировки, к которому относится упражнение.
     :param exercise_type: Тип упражнения ('admin' или 'user').
     """
-    # Получение максимальной позиции для определения новой позиции
+    # Получение максимальной позиции
     result = await session.execute(
         select(func.max(Exercise.position))
         .where(Exercise.training_day_id == training_day_id)
@@ -125,7 +135,6 @@ async def orm_add_exercise(session: AsyncSession, data: dict, training_day_id: i
     if max_position is None:
         max_position = -1
 
-    # Определение значений внешних ключей в зависимости от типа упражнения
     admin_exercise_id = None
     user_exercise_id = None
 
@@ -140,7 +149,6 @@ async def orm_add_exercise(session: AsyncSession, data: dict, training_day_id: i
     else:
         raise ValueError("Неверный тип упражнения. Должно быть 'admin' или 'user'.")
 
-    # Создание объекта Exercise с установленными внешними ключами
     obj = Exercise(
         training_day_id=training_day_id,
         name=data['name'],
@@ -148,7 +156,7 @@ async def orm_add_exercise(session: AsyncSession, data: dict, training_day_id: i
         position=max_position + 1,
         admin_exercise_id=admin_exercise_id,
         user_exercise_id=user_exercise_id,
-        circle_training=data.get('circle_training', False)  # Безопасное получение поля
+        circle_training=data.get('circle_training', False)
     )
 
     session.add(obj)
@@ -230,12 +238,12 @@ async def orm_update_exercise(session: AsyncSession, exercise_id: int, data: dic
             if 'admin_exercise_id' not in data or data['admin_exercise_id'] is None:
                 raise ValueError("admin_exercise_id должен быть указан для администраторских упражнений.")
             update_data['admin_exercise_id'] = data['admin_exercise_id']
-            update_data['user_exercise_id'] = None  # Обнуляем пользовательский FK
+            update_data['user_exercise_id'] = None
         elif exercise_type == 'user':
             if 'user_exercise_id' not in data or data['user_exercise_id'] is None:
                 raise ValueError("user_exercise_id должен быть указан для пользовательских упражнений.")
             update_data['user_exercise_id'] = data['user_exercise_id']
-            update_data['admin_exercise_id'] = None  # Обнуляем админский FK
+            update_data['admin_exercise_id'] = None
         else:
             raise ValueError("Неверный тип упражнения. Должно быть 'admin' или 'user'.")
 
@@ -256,9 +264,6 @@ async def orm_update_exercise(session: AsyncSession, exercise_id: int, data: dic
 async def orm_delete_exercise(session: AsyncSession, exercise_id: int):
     """
     Удаляет упражнение из базы данных.
-
-    :param session: Асинхронная сессия SQLAlchemy.
-    :param exercise_id: ID упражнения для удаления.
     """
     query = delete(Exercise).where(Exercise.id == exercise_id)
     await session.execute(query)
@@ -376,7 +381,7 @@ async def orm_update_exercise_set(session: AsyncSession, exercise_set_id: int, r
     await session.commit()
 
 
-############################ Подходы ######################################
+############################ Подходы (Sets) ######################################
 
 async def orm_add_set(session: AsyncSession, data: dict):
     obj = Set(
@@ -395,6 +400,12 @@ async def orm_get_sets(session: AsyncSession, exercise_id: int):
     return result.scalars().all()
 
 
+async def orm_get_set(session: AsyncSession, set_id: int):
+    query = select(Set).where(Set.id == set_id)
+    result = await session.execute(query)
+    return result.scalar()
+
+
 async def orm_get_sets_by_session(session: AsyncSession, exercise_id: int, training_session_id: str):
     result = await session.execute(
         select(Set)
@@ -405,23 +416,34 @@ async def orm_get_sets_by_session(session: AsyncSession, exercise_id: int, train
     return result.scalars().all()
 
 
-async def orm_get_set(session: AsyncSession, set_id: int):
-    query = select(Set).where(Set.id == set_id)
-    result = await session.execute(query)
-    return result.scalar()
+async def orm_get_all_sets_by_user_id_grouped_by_date(session: AsyncSession, user_id: int):
+    """
+    Получает все подходы (Set) для заданного user_id, сгруппированные по дате.
+    Предполагается, что в модели Set есть поле created_at или аналогичное,
+    содержащее дату/время создания подхода.
 
+    :param session: Асинхронная сессия SQLAlchemy.
+    :param user_id: Идентификатор пользователя.
+    :return: Список кортежей (date, [Set, Set, ...]) или любая другая требуемая структура.
+    """
+    from sqlalchemy import func, cast, Date
 
-async def orm_update_set(session: AsyncSession, set_id: int, data: dict):
-    query = (
-        update(Set)
-        .where(Set.id == set_id)
-        .values(
-            weight=data['weight'],
-            repetitions=data['repetitions'],
+    # Пример, если в модели Set есть поле created_at (DateTime),
+    # а мы хотим сгруппировать по дате (без учета времени):
+    result = await session.execute(
+        select(
+            cast(Set.created, Date).label("set_date"),
+            func.array_agg(Set.id).label("set_ids")
         )
+        .join(Exercise, Set.exercise_id == Exercise.id)
+        .join(TrainingDay, Exercise.training_day_id == TrainingDay.id)
+        .join(TrainingProgram, TrainingDay.training_program_id == TrainingProgram.id)
+        .join(User, TrainingProgram.user_id == User.user_id)
+        .where(User.user_id == user_id)
+        .group_by(cast(Set.created, Date))
+        .order_by(cast(Set.created, Date))
     )
-    await session.execute(query)
-    await session.commit()
+    return result.all()
 
 
 ############################ Шаблонные упражнения ######################################
@@ -538,27 +560,19 @@ async def orm_get_categories(session: AsyncSession, user_id: int):
     """
     Получает список категорий упражнений с количеством упражнений в каждой категории,
     включая административные и пользовательские упражнения для конкретного пользователя.
-
-    :param session: Асинхронная сессия SQLAlchemy.
-    :param user_id: Идентификатор пользователя, для которого считаются пользовательские упражнения.
-    :return: Список кортежей (ExerciseCategory, exercise_count).
     """
-    # Подзапрос для административных упражнений
     admin_select = select(
         AdminExercises.category_id.label('category_id')
     )
 
-    # Подзапрос для пользовательских упражнений, фильтрованных по user_id
     user_select = select(
         UserExercises.category_id.label('category_id')
     ).where(
         UserExercises.user_id == user_id
     )
 
-    # Объединение подзапросов с помощью UNION ALL
     combined_subquery = union_all(admin_select, user_select).subquery()
 
-    # Основной запрос: подсчёт количества упражнений в каждой категории
     query = (
         select(
             ExerciseCategory,
@@ -572,7 +586,6 @@ async def orm_get_categories(session: AsyncSession, user_id: int):
         .order_by(ExerciseCategory.name)
     )
 
-    # Выполнение запроса
     result = await session.execute(query)
     return result.all()
 
@@ -592,6 +605,90 @@ async def orm_create_categories(session: AsyncSession, categories: list):
         return
     session.add_all([ExerciseCategory(name=name) for name in categories])
     await session.commit()
+
+
+async def orm_add_training_session(session: AsyncSession, data: dict):
+    """
+    Создаёт новую тренировочную сессию для пользователя.
+    data может содержать поля: user_id, date (опционально), note (опционально).
+    """
+    from database.models import TrainingSession
+
+    new_session = TrainingSession(
+        user_id=data["user_id"],
+        date=data.get("date"),  # Можно передать извне, а можно оставить None
+        note=data.get("note", "")  # Можно оставить пустую строку, если нет заметок
+    )
+    session.add(new_session)
+    try:
+        await session.commit()
+    except IntegrityError as e:
+        await session.rollback()
+        raise e
+    return new_session
+
+
+async def orm_get_training_session(session: AsyncSession, session_id: str):
+    """
+    Получает тренировочную сессию по её UUID.
+    """
+    from database.models import TrainingSession
+    query = select(TrainingSession).where(TrainingSession.id == session_id)
+    result = await session.execute(query)
+    return result.scalar()
+
+
+async def orm_get_training_sessions_by_user(session: AsyncSession, user_id: int):
+    """
+    Возвращает все тренировочные сессии пользователя, отсортированные по дате.
+    """
+    from database.models import TrainingSession
+    query = (
+        select(TrainingSession)
+        .where(TrainingSession.user_id == user_id)
+        .order_by(TrainingSession.date.desc())
+    )
+    result = await session.execute(query)
+    return result.scalars().all()
+
+
+async def orm_delete_training_session(session: AsyncSession, session_id: str):
+    """
+    Удаляет тренировочную сессию по её UUID, вместе с подходами (Set),
+    поскольку cascade='all, delete-orphan' уже прописан.
+    """
+    from database.models import TrainingSession
+    query = delete(TrainingSession).where(TrainingSession.id == session_id)
+    await session.execute(query)
+    try:
+        await session.commit()
+    except IntegrityError as e:
+        await session.rollback()
+        raise e
+
+
+async def orm_update_training_session(session: AsyncSession, session_id: str, data: dict):
+    """
+    Обновляет поле note или дату для тренировочной сессии.
+    """
+    from database.models import TrainingSession
+    update_data = {}
+    if "date" in data:
+        update_data["date"] = data["date"]
+    if "note" in data:
+        update_data["note"] = data["note"]
+
+    query = (
+        update(TrainingSession)
+        .where(TrainingSession.id == session_id)
+        .values(**update_data)
+    )
+    await session.execute(query)
+    try:
+        await session.commit()
+    except IntegrityError as e:
+        await session.rollback()
+        raise e
 
 
 ##################### Добавляем юзера в БД #####################################

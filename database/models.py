@@ -12,6 +12,9 @@ from sqlalchemy.orm import (
 
 
 class Base(DeclarativeBase):
+    """
+    Базовый класс с полями created/updated для всех таблиц.
+    """
     created: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
     updated: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -83,6 +86,14 @@ class User(Base):
     weight: Mapped[float] = mapped_column(Float(), nullable=False)
     actual_program_id: Mapped[int] = mapped_column(Integer(), nullable=True)
 
+    # Связь с TrainingSession (см. модель ниже), чтобы быстро получить все сессии пользователя
+    training_sessions: Mapped[List['TrainingSession']] = relationship(
+        "TrainingSession",
+        back_populates="user",
+        lazy='select',
+        cascade='all, delete-orphan'
+    )
+
 
 class TrainingProgram(Base):
     __tablename__ = 'training_program'
@@ -127,6 +138,7 @@ class Exercise(Base):
         Index('idx_exercise_training_day_id', 'training_day_id'),
         CheckConstraint('base_reps > 0', name='check_base_reps_positive'),
         CheckConstraint('base_sets > 0', name='check_base_sets_positive'),
+        # Гарантия, что либо admin_exercise_id, либо user_exercise_id, но не оба сразу
         CheckConstraint(
             """
             (admin_exercise_id IS NOT NULL AND user_exercise_id IS NULL)
@@ -146,7 +158,6 @@ class Exercise(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     circle_training: Mapped[bool] = mapped_column(Boolean(), default=False)
 
-    # Внешние ключи теперь nullable=True с проверкой в ограничении
     admin_exercise_id: Mapped[int] = mapped_column(ForeignKey('admin_exercises.id', ondelete='CASCADE'), nullable=True)
     user_exercise_id: Mapped[int] = mapped_column(ForeignKey('user_exercises.id', ondelete='CASCADE'), nullable=True)
 
@@ -157,10 +168,8 @@ class Exercise(Base):
         cascade='all, delete-orphan',
         lazy='select'
     )
-
     sets: Mapped[List['Set']] = relationship("Set", back_populates="exercise", lazy='select')
 
-    # Связь с AdminExercises
     admin_exercise: Mapped['AdminExercises'] = relationship(
         "AdminExercises",
         back_populates="exercises_admin",
@@ -168,7 +177,6 @@ class Exercise(Base):
         passive_deletes=True
     )
 
-    # Связь с UserExercises
     user_exercise: Mapped['UserExercises'] = relationship(
         "UserExercises",
         back_populates="exercises_user",
@@ -187,16 +195,68 @@ class ExerciseSet(Base):
     exercise: Mapped['Exercise'] = relationship('Exercise', back_populates='exercise_sets', lazy='select')
 
 
+# ------------------------- NEW MODEL: TrainingSession -------------------------
+class TrainingSession(Base):
+    """
+    Тренировочная сессия пользователя.
+    Здесь можно хранить дату, заметку/комментарий к тренировке,
+    и хранить связь с подходами (Set).
+    """
+    __tablename__ = 'training_session'
+
+    # Используем UUID в качестве первичного ключа
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey('user.user_id', ondelete='CASCADE'), nullable=False)
+    date: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
+    note: Mapped[str] = mapped_column(Text, nullable=True)
+
+    # Relationship для доступа к пользователю
+    user: Mapped['User'] = relationship(
+        "User",
+        back_populates="training_sessions",
+        lazy='select'
+    )
+
+    # В рамках одной тренировочной сессии у нас может быть много подходов
+    sets: Mapped[List['Set']] = relationship(
+        "Set",
+        back_populates="training_session",
+        cascade='all, delete-orphan',
+        lazy='select'
+    )
+
+
 class Set(Base):
     __tablename__ = 'set'
     __table_args__ = (Index('idx_set_exercise_id', 'exercise_id'),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     exercise_id: Mapped[int] = mapped_column(
-        ForeignKey('exercise.id', ondelete='CASCADE'), nullable=False)
+        ForeignKey('exercise.id', ondelete='CASCADE'),
+        nullable=False
+    )
     weight: Mapped[float] = mapped_column(Float(), nullable=False)
     repetitions: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Здесь вместо прямого UUID по умолчанию,
+    # мы теперь указываем ForeignKey на TrainingSession.id
     training_session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, default=uuid.uuid4)
+        UUID(as_uuid=True),
+        ForeignKey('training_session.id', ondelete='CASCADE'),
+        nullable=False
+    )
+
     exercise: Mapped['Exercise'] = relationship(
-        'Exercise', back_populates='sets', lazy='select')
+        'Exercise',
+        back_populates='sets',
+        lazy='select'
+    )
+    training_session: Mapped['TrainingSession'] = relationship(
+        "TrainingSession",
+        back_populates="sets",
+        lazy='select'
+    )

@@ -1,9 +1,14 @@
-from asyncio import gather
+import asyncio
 import time
-import logging
 from datetime import date
+import logging
+from aiogram.types import InputMediaPhoto
+from asyncio import gather
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from database.models import Set
 from database.orm_query import (
     orm_get_program,
     orm_get_programs,
@@ -21,7 +26,8 @@ from database.orm_query import (
     orm_add_exercise_set,
     orm_get_exercise_sets,
     orm_turn_on_off_program,
-    orm_get_user_exercises_in_category, orm_get_user_exercises, orm_get_user_exercise
+    orm_get_user_exercises_in_category, orm_get_user_exercises, orm_get_user_exercise,
+    orm_get_training_sessions_by_user, orm_get_training_session
 )
 
 from kbds.inline import (
@@ -39,12 +45,12 @@ from kbds.inline import (
     get_exercise_settings_btns,
     get_training_process_btns,
     get_user_main_btns,
-    get_custom_exercise_btns,
+    get_custom_exercise_btns, get_sessions_results_btns, get_session_result_btns,
 )
 from utils.paginator import Paginator
-from aiogram.types import InputMediaPhoto
 
 from utils.separator import get_action_part
+from utils.temporary_storage import retrieve_data_temporarily
 
 WEEK_DAYS_RU = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
 
@@ -136,6 +142,144 @@ async def profile(session: AsyncSession, level: int, action: str, user_id: int):
         )
         kbds = error_btns()
         return error_image, kbds
+
+
+async def training_results(session: AsyncSession, level: int, user_id: int, page: int):
+    """
+        Показываем список тренировочных сессий (TrainingSession) для данного user_id.
+        Группируем подходы (Set) именно по session_id, а не по дате.
+        """
+    try:
+        # Получаем "баннер" (например, картинка+текст) и сам объект пользователя
+        banner, user = await asyncio.gather(
+            orm_get_banner(session, "training_stats"),
+            orm_get_user_by_id(session, user_id)
+        )
+
+        # Получаем все сессии пользователя
+        all_sessions = await orm_get_training_sessions_by_user(session, user_id)
+
+        # Если никаких сессий нет
+        if not all_sessions:
+            banner_image = InputMediaPhoto(
+                media=banner.image,
+                caption=f"<strong>{banner.description}\n\nНет ни одной сессии</strong>"
+            )
+            # Пусть клавиатура будет только "назад"
+            kbds = get_sessions_results_btns(
+                level=level,
+                page=page, sessions=[], pagination_btns={})
+            return banner_image, kbds
+
+        # Пагинация (по 5 сессий на страницу, например)
+        paginator = Paginator(array=all_sessions, page=page, per_page=5)
+        current_page_data = paginator.get_page()
+
+        # Формируем caption с информацией о том, какая страница и сколько всего страниц
+        caption = (
+            f"<strong>Ваши тренировочные сессии\n"
+            f"Страница {paginator.page}/{paginator.pages}\n\n"
+            f"{banner.description}</strong>"
+        )
+        banner_image = InputMediaPhoto(
+            media=banner.image,
+            caption=caption
+        )
+
+        # Генерируем кнопки
+        pagination_btns = pages(paginator, "training_sess")
+        kbds = get_sessions_results_btns(
+            level=level,
+            page=page,
+            pagination_btns=pagination_btns,
+            sessions=current_page_data
+        )
+        return banner_image, kbds
+
+    except Exception as e:
+        logging.exception(f"Ошибка в training_results_by_session: {e}")
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке списка тренировочных сессий"
+        )
+        kbds = error_btns()
+        return error_image, kbds
+
+
+async def show_result(session: AsyncSession, level: int, page: int, session_number: str):
+    try:
+        banner = await orm_get_banner(session, "training_stats")
+        if session_number:
+            session_id = retrieve_data_temporarily(session_number)
+            session_data = await orm_get_training_session(session, session_id)
+            if not session_data:
+                banner_image = InputMediaPhoto(
+                    media=banner.image,
+                    caption="<strong>Данные по тренировке не найдены</strong>"
+                )
+                kbds = error_btns()
+                return banner_image, kbds
+
+            # 1) Получаем все подходы
+            all_sets_query = await session.execute(
+                select(Set).where(Set.training_session_id == session_data.id)
+            )
+            all_sets = all_sets_query.scalars().all()
+
+            # 2) Готовим словарь ex_id -> { "exercise": Exercise, "sets": [Set, Set, ...] }
+            exercises_map = {}
+
+            for s_obj in all_sets:
+                ex_obj = await orm_get_exercise(session, s_obj.exercise_id)
+
+                if ex_obj.id not in exercises_map:
+                    exercises_map[ex_obj.id] = {
+                        "exercise": ex_obj,
+                        "sets": []
+                    }
+                exercises_map[ex_obj.id]["sets"].append(s_obj)
+
+            # 3) Формируем итоговый текст
+            result_message = "<strong>Результаты вашей тренировки</strong>\n"
+
+            for ex_id, data_dict in exercises_map.items():
+                ex = data_dict["exercise"]
+                sets_for_ex = data_dict["sets"]
+
+                result_message += f"\nУпражнение: {ex.name}\n"
+
+                if sets_for_ex:
+                    for idx, s in enumerate(sets_for_ex, start=1):
+                        result_message += (
+                            f"  Подход {idx}: {s.repetitions} повторений "
+                            f"с весом {s.weight} кг\n"
+                        )
+                else:
+                    result_message += "  Нет данных о подходах.\n"
+
+            banner_image = InputMediaPhoto(
+                media=banner.image,
+                caption=result_message
+            )
+        else:
+            session_data = None
+            banner_image = InputMediaPhoto(
+                media=banner.image,
+                caption="<strong>Тренировка не обнаружена</strong>"
+            )
+
+        kbds = get_session_result_btns(level=level, page=page, sessions=session_data)
+        return banner_image, kbds
+
+    except Exception as e:
+        logging.exception(f"Ошибка в show_result: {e}")
+        error_image = InputMediaPhoto(
+            media='https://postimg.cc/Ty7d15kq',
+            caption="Ошибка при загрузке результатов тренировки"
+        )
+        kbds = error_btns()
+        return error_image, kbds
+
 
 
 async def schedule(session: AsyncSession, level: int, action: str, training_day_id: int, user_id: int):
@@ -609,7 +753,8 @@ async def custom_exercises(session: AsyncSession, level: int, training_day_id: i
 
             kbds = get_custom_exercise_btns(level=level, action=action, program_id=training_program_id, page=page,
                                             training_day_id=training_day_id, category_id=category_id, empty=empty,
-                                            user_exercises=custom_user_exercises, exercise_id=exericise_id, circle_training=circle_training)
+                                            user_exercises=custom_user_exercises, exercise_id=exericise_id,
+                                            circle_training=circle_training)
         else:
             custom_user_exercises = await orm_get_user_exercises(session, user_id)
             banner = await orm_get_banner(session, "user_program")
@@ -627,7 +772,8 @@ async def custom_exercises(session: AsyncSession, level: int, training_day_id: i
 
             kbds = get_custom_exercise_btns(level=level, action=action, program_id=training_program_id, page=page,
                                             training_day_id=training_day_id, category_id=category_id, empty=empty,
-                                            user_exercises=custom_user_exercises, exercise_id=exericise_id, circle_training=circle_training)
+                                            user_exercises=custom_user_exercises, exercise_id=exericise_id,
+                                            circle_training=circle_training)
 
         return user_image, kbds
 
@@ -644,7 +790,7 @@ async def custom_exercises(session: AsyncSession, level: int, training_day_id: i
 async def get_menu_content(session: AsyncSession, level: int, action: str, training_program_id: int = None,
                            exercise_id: int = None, page: int = None, training_day_id: int = None, user_id: int = None,
                            category_id: int = None, month: int = None, year: int = None, set_id: int = None,
-                           empty: bool = False, circle_training: bool = False):
+                           empty: bool = False, circle_training: bool = False, session_number: str = None):
     start_time = time.monotonic()
     try:
 
@@ -663,6 +809,8 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
             # Программа или процесс тренировки
             if action == "training_process":
                 return await training_process(session, level, training_day_id)
+            if action == "training_stats" or action.startswith("next") or action.startswith("previous"):
+                return await training_results(session, level, user_id, page)
             return await program(session, level, training_program_id, user_id)
 
         elif level == 3:
@@ -670,6 +818,8 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
             if action in ["prg_stg", "turn_on_prgm", "turn_off_prgm"] or action.startswith(
                     "to_del_prgm") or action.startswith("prgm_del"):
                 return await program_settings(session, level, training_program_id, action, user_id)
+            if action == "t_d":
+                return await show_result(session, level, page, session_number)
             return await training_days(session, level, training_program_id, page)
 
         elif level == 4:

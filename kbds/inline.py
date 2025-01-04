@@ -6,6 +6,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from utils.separator import get_action_part
+from utils.temporary_storage import store_data_temporarily
 
 WEEK_DAYS = [calendar.day_abbr[i] for i in range(7)]
 WEEK_DAYS_RU = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
@@ -34,6 +35,7 @@ class MenuCallBack(CallbackData, prefix="menu"):
     year: int | None = None
     month: int | None = None
     circle_training: bool = False
+    session_number: str | None = None
 
 
 def error_btns() -> InlineKeyboardMarkup:
@@ -110,16 +112,110 @@ def get_user_programs_list(*, level: int, programs: list, active_program_id: int
     return keyboard.adjust(*sizes).as_markup()
 
 
-def get_profile_btns(*, level: int, sizes: tuple[int] = (1,)) -> InlineKeyboardMarkup:
+def get_profile_btns(
+        *, level: int
+):
     """
-    Возвращает клавиатуру профиля с кнопкой возврата назад.
     """
-    return InlineKeyboardBuilder().add(
-        InlineKeyboardButton(
-            text='⬅️ Назад',
-            callback_data=MenuCallBack(level=level - 1, action='main').pack()
+    keyboard = InlineKeyboardBuilder()
+
+    stats_callback = MenuCallBack(level=level + 1, action='training_stats').pack()
+
+    # settings_callback = MenuCallBack(level=level + 1, action='settings').pack()
+
+    back_callback = MenuCallBack(level=level - 1, action='profile').pack()
+
+    stats_button = InlineKeyboardButton(text="📊 Результаты", callback_data=stats_callback)
+
+    # settings_button = InlineKeyboardButton(text="⚙️ Настройки профиля", callback_data=settings_callback)
+
+    back_button = InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback)
+
+    keyboard.row(stats_button)
+    keyboard.row(back_button)
+    return keyboard.as_markup()
+
+
+def get_sessions_results_btns(
+        *,
+        level: int,
+        page: int,
+        pagination_btns: dict,
+        sessions: list,  # список TrainingSession
+        sizes: tuple[int] = (1, 1)
+) -> InlineKeyboardMarkup:
+    """
+    Формируем клавиатуру:
+      - Кнопка на каждую сессию (Session), где callback_data содержит storage_key
+      - Кнопки пагинации
+      - Кнопка "⬅️ Назад" в конце
+    """
+    keyboard = InlineKeyboardBuilder()
+
+    # Для каждой TrainingSession создаём кнопку
+    for sess in sessions:
+        storage_key = store_data_temporarily(str(sess.id))
+        # Отображаем только дату (без времени):
+        date_str = sess.date.strftime("%Y-%m-%d")  # например, "2025-01-03"
+        btn_text = f"Тренировка {date_str} #{str(sess.id)[:4]}"
+
+        keyboard.row(
+            InlineKeyboardButton(
+                text=btn_text,
+                callback_data=MenuCallBack(
+                    level=level + 1,
+                    page=page,
+                    action='t_d',
+                    session_number=storage_key
+                ).pack()
+            )
         )
-    ).adjust(*sizes).as_markup()
+
+
+    # Кнопки пагинации (prev / next)
+    row = []
+    for text, act in pagination_btns.items():
+        new_page = page + 1 if act.startswith("next") else page - 1
+        row.append(
+            InlineKeyboardButton(
+                text=text,
+                callback_data=MenuCallBack(
+                    level=level,
+                    action=act,
+                    page=new_page
+                ).pack()
+            )
+        )
+
+    if row:
+        keyboard.row(*row)
+
+    keyboard.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data=MenuCallBack(level=level - 1, action='profile').pack()
+        )
+    )
+    return keyboard.adjust(*sizes).as_markup()
+
+
+def get_session_result_btns(
+        *,
+        level: int,
+        page: int,
+        sessions: list,
+):
+    keyboard = InlineKeyboardBuilder()
+
+    # Кнопка "Назад"
+    keyboard.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data=MenuCallBack(level=level - 1, action='training_stats', page=page).pack()
+        )
+    )
+
+    return keyboard.as_markup()
 
 
 def get_schedule_btns(

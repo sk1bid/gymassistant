@@ -38,7 +38,7 @@ from database.orm_query import (
     orm_update_program,
     orm_update_exercise,
     orm_get_categories,
-    orm_delete_user_exercise,
+    orm_delete_user_exercise, orm_add_training_session,
 )
 
 # Ваши функции для меню/кнопок
@@ -513,6 +513,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 set_id=callback_data.set_id,
                 empty=callback_data.empty,
                 circle_training=callback_data.circle_training,
+                session_number=callback_data.session_number,
             )
 
             if action.startswith("shd/"):
@@ -531,6 +532,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     set_id=callback_data.set_id,
                     empty=callback_data.empty,
                     circle_training=callback_data.circle_training,
+                    session_number=callback_data.session_number,
                 )
 
             await callback.message.edit_media(media=media, reply_markup=reply_markup)
@@ -557,6 +559,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 set_id=callback_data.set_id,
                 empty=callback_data.empty,
                 circle_training=callback_data.circle_training,
+                session_number=callback_data.session_number,
             )
 
             if action.startswith("shd/"):
@@ -575,6 +578,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     set_id=callback_data.set_id,
                     empty=callback_data.empty,
                     circle_training=callback_data.circle_training,
+                    session_number=callback_data.session_number,
                 )
             await callback.message.edit_media(media=media, reply_markup=reply_markup)
 
@@ -601,6 +605,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 set_id=callback_data.set_id,
                 empty=callback_data.empty,
                 circle_training=callback_data.circle_training,
+                session_number=callback_data.session_number,
             )
             await callback.message.edit_media(media=media, reply_markup=reply_markup)
             await callback.answer("Программа удалена.")
@@ -648,6 +653,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 set_id=callback_data.set_id,
                 empty=callback_data.empty,
                 circle_training=callback_data.circle_training,
+                session_number=callback_data.session_number,
             )
             if action.startswith("shd/"):
                 media, reply_markup = await get_menu_content(
@@ -664,6 +670,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     month=callback_data.month,
                     set_id=callback_data.set_id,
                     circle_training=callback_data.circle_training,
+                    session_number=callback_data.session_number,
                 )
             await callback.message.edit_media(media=media, reply_markup=reply_markup)
             await callback.answer()
@@ -683,6 +690,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 month=callback_data.month,
                 set_id=callback_data.set_id,
                 empty=callback_data.empty,
+                session_number=callback_data.session_number,
             )
             await callback.message.edit_media(media=media, reply_markup=reply_markup)
             await callback.answer()
@@ -706,6 +714,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     set_id=callback_data.set_id,
                     empty=callback_data.empty,
                     circle_training=callback_data.circle_training,
+                    session_number=callback_data.session_number,
                 )
                 await callback.message.edit_media(media=media, reply_markup=reply_markup)
                 user_data = await state.get_data()
@@ -734,6 +743,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 set_id=callback_data.set_id,
                 empty=callback_data.empty,
                 circle_training=callback_data.circle_training,
+                session_number=callback_data.session_number,
             )
             await state.update_data(selected_exercise_id=None, selected_program_id=None)
             await callback.message.edit_media(media=media, reply_markup=reply_markup)
@@ -755,6 +765,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
 #            ЛОГИКА СТАРТА ТРЕНИРОВКИ (Смешанно: Обычные + Круговые)
 # ----------------------------------------------------------------------
 
+@user_private_router.callback_query()
 async def handle_start_training_process(
         callback: types.CallbackQuery,
         callback_data: MenuCallBack,
@@ -762,23 +773,36 @@ async def handle_start_training_process(
         session: AsyncSession
 ):
     """
-    1) Создаём training_session_id
-    2) Получаем все упражнения (orm_get_exercises)
-    3) Группируем их (group_exercises_into_blocks)
-    4) Сохраняем blocks + block_index=0
-    5) Если нет упражнений => сообщаем. Иначе — берём 1-й блок
-       и смотрим: circle_training или нет
+    Пример исправленного кода, при котором мы:
+    1) Создаём реальную тренировочную сессию в БД (TrainingSession).
+    2) Берём её UUID (id).
+    3) Сохраняем этот UUID в FSMContext как training_session_id.
+    4) Вся дальнейшая логика (добавление подходов) будет использовать существующий training_session_id,
+       что устраняет ошибку нарушения внешнего ключа.
     """
-    training_session_id = uuid.uuid4()
+    # Шаг 1: Определяем user_id (у вас может быть другая логика)
+    user_id = callback.from_user.id
+
+    # Шаг 2: Создаём запись в таблице training_session
+    # (Функция orm_add_training_session должна записать её в БД и вернуть объект TrainingSession)
+    new_session = await orm_add_training_session(session, {
+        "user_id": user_id,
+        "note": "Запуск тренировки"  # при желании меняйте, добавляйте дату и т.д.
+    })
+
+    # Шаг 3: Берём реальный UUID из созданной строки
+    training_session_id = str(new_session.id)
+
+    # Шаг 4: Сохраняем training_session_id в состояние FSM
     await state.set_state(TrainingProcess.exercise_index)
     await state.update_data(
-        training_day_id=callback_data.training_day_id,
+        training_session_id=training_session_id,
         exercise_index=0,
         set_index=1,
-        training_session_id=str(training_session_id),
+        training_day_id=callback_data.training_day_id  # пример, если нужно
     )
 
-    # Считываем упражнения (как обычно)
+    # Дальше ваша логика: получение упражнений, группировка, вывод и т.д.
     exercises = await orm_get_exercises(session, callback_data.training_day_id)
     if not exercises:
         await callback.answer("Нет упражнений в этом тренировочном дне.")
@@ -786,9 +810,7 @@ async def handle_start_training_process(
         await callback.answer()
         return
 
-    # Группируем упражнения в "блоки"
     blocks = group_exercises_into_blocks(exercises)
-
     await state.update_data(blocks=[[ex.id for ex in block] for block in blocks], block_index=0)
 
     if not blocks:
@@ -797,20 +819,27 @@ async def handle_start_training_process(
         await callback.answer()
         return
 
-    # Создаём одно служебное сообщение
     bot_msg = await callback.message.answer("Подготовка к тренировке...")
     await asyncio.sleep(1)
     await state.update_data(bot_message_id=bot_msg.message_id)
 
-    # Переходим к первому блоку
     await process_current_block(callback.message, state, session)
     await callback.answer()
 
+
+###################################################################
+#    ГРУППИРОВКА УПРАЖНЕНИЙ И НАВИГАЦИЯ ПО БЛОКАМ
+###################################################################
 
 def group_exercises_into_blocks(exercises: list):
     """
     Если подряд идут circle_training=True, объединяем их в один блок (circuit).
     Иначе (False) -> standard-блок.
+
+    Пример:
+       [ex1(circle=True), ex2(circle=True), ex3(circle=False), ex4(circle=False)]
+       =>
+       [[ex1, ex2], [ex3, ex4]]
     """
     blocks = []
     i = 0
@@ -833,52 +862,54 @@ def group_exercises_into_blocks(exercises: list):
     return blocks
 
 
-async def process_current_block(message: types.Message, state: FSMContext, session: AsyncSession):
+async def process_current_block(message: types.Message, state: FSMContext, session):
     """
-    Смотрим block_index, если блоков нет -> finish_training,
-    иначе берём блок: если все circle_training=True -> circuit,
-    иначе standard.
+    Обработка текущего блока упражнений. Если блок пуст или индекс за границами, завершаем.
+    Иначе определяем, этот блок — стандартный или круговой.
     """
     data = await state.get_data()
     blocks_data = data.get('blocks', [])
     block_index = data.get('block_index', 0)
 
     if block_index >= len(blocks_data):
+        # Все блоки пройдены
         await finish_training(message, state, session)
         return
 
     ex_ids = blocks_data[block_index]
-    # Проверяем, круговой ли
     ex_objs = []
-    circ = True
+    is_circuit = True
+
+    # Проверяем, все ли упражнения circle_training=True
     for ex_id in ex_ids:
         ex_obj = await orm_get_exercise(session, ex_id)
         ex_objs.append(ex_obj)
         if not ex_obj.circle_training:
-            circ = False
+            is_circuit = False
 
-    if circ:
-        # Очищаем ключи от стандартных, чтобы не мешали
+    if is_circuit:
+        # Сбрасываем "стандартные" ключи
         await state.update_data(standard_ex_ids=None, standard_ex_idx=None, set_index=None)
-
         await start_circuit_block(message, state, session, ex_objs)
     else:
-        # Очищаем ключи от круговых, чтобы не мешали
+        # Сбрасываем "круговые" ключи
         await state.update_data(circuit_ex_ids=None, circuit_ex_idx=None, circuit_round=None)
-
         await start_standard_block(message, state, session, ex_objs)
 
 
-async def start_standard_block(message: types.Message, state: FSMContext, session: AsyncSession, ex_objs: list):
+###################################################################
+#    ОБРАБОТКА СТАНДАРТНОГО БЛОКА
+###################################################################
+
+async def start_standard_block(message: types.Message, state: FSMContext, session, ex_objs: list):
     """
-    Обычный блок (не circle_training).
-    Если в блоке несколько упражнений подряд (все False) — обрабатываем последовательно.
+    Начинаем блок стандартных упражнений (circle_training=False).
+    Если таких упражнений подряд несколько, обрабатываем их последовательно.
     """
     data = await state.get_data()
-    bot_msg_id = data['bot_message_id']
+    bot_msg_id = data.get('bot_message_id')
 
     ex_ids = [ex.id for ex in ex_objs]
-    # Обнуляем/задаём нужные поля для standard
     await state.update_data(
         standard_ex_ids=ex_ids,
         standard_ex_idx=0,
@@ -891,120 +922,25 @@ async def start_standard_block(message: types.Message, state: FSMContext, sessio
         f"Подход 1 из {first_ex.base_sets}\nВведите количество повторений:"
     )
 
+    # Показываем пользователю задание
     await message.bot.edit_message_text(
         chat_id=message.chat.id,
         message_id=bot_msg_id,
         text=text
     )
+    # Запоминаем, что это текущее упражнение
     await state.update_data(current_exercise_id=first_ex.id)
+    # Переходим к вводу повторений
     await state.set_state(TrainingProcess.reps)
 
 
-async def start_circuit_block(message: types.Message, state: FSMContext, session: AsyncSession, ex_objs: list):
+async def process_standard_after_set(message: types.Message, state: FSMContext, session):
     """
-    Круговой блок: ex_objs (все True).
+    Когда пользователь ввёл вес для текущего стандартного упражнения (т.е. завершил один подход).
+    Проверяем, нужно ли переходить к следующему подходу в этом же упражнении,
+    либо переключаемся на следующее упражнение в блоке,
+    либо завершаем блок и переходим к следующему блоку.
     """
-    data = await state.get_data()
-    bot_msg_id = data['bot_message_id']
-
-    ex_ids = [ex.id for ex in ex_objs]
-    # Обнуляем/задаём поля для circuit
-    await state.update_data(
-        circuit_ex_ids=ex_ids,
-        circuit_ex_idx=0,
-        circuit_round=1
-    )
-
-    first_ex = ex_objs[0]
-    text = (
-        f"Блок круговых упражнений.\n\n"
-        f"Необходимо подготовить оборудование для каждого упражнения\n\n"
-        f"Между упражнениями отдых {CIRCULAR_REST_BETWEEN_ROUNDS} сек.\n\n"
-        f"После каждого раунда отдых 5 минут\n"
-        f"Раунд 1 из {CIRCULAR_ROUNDS}\n\n"
-        f"{first_ex.name}\n{first_ex.description}\n\n"
-        "Введите количество повторений:"
-    )
-    await message.bot.edit_message_text(
-        chat_id=message.chat.id,
-        message_id=bot_msg_id,
-        text=text
-    )
-    await state.update_data(current_exercise_id=ex_ids[0])
-    await state.set_state(TrainingProcess.reps)
-
-
-# ----------------------------------------------------------------------
-#      ОБРАБОТКА ВВОДА ПОВТОРЕНИЙ/ВЕСА
-# ----------------------------------------------------------------------
-
-@user_private_router.message(TrainingProcess.reps)
-async def process_reps_input(message: types.Message, state: FSMContext):
-    try:
-        reps = int(message.text)
-        if reps <= 0:
-            raise ValueError
-    except ValueError:
-        await message.reply("Ошибка: введите положительное целое число повторений.")
-        return
-
-    try:
-        await message.delete()  # чтобы чат был чист
-    except:
-        pass
-
-    await state.update_data(reps=reps)
-    data = await state.get_data()
-    bot_msg_id = data.get("bot_message_id")
-
-    await message.bot.edit_message_text(
-        chat_id=message.chat.id,
-        message_id=bot_msg_id,
-        text="Введите вес снаряда (в кг):"
-    )
-    await state.set_state(TrainingProcess.weight)
-
-
-@user_private_router.message(TrainingProcess.weight)
-async def process_weight_input(message: types.Message, state: FSMContext, session: AsyncSession):
-    try:
-        weight = float(message.text.replace(',', '.'))
-        if weight < 0:
-            raise ValueError
-    except ValueError:
-        await message.reply("Ошибка: вес >= 0.")
-        return
-
-    try:
-        await message.delete()
-    except:
-        pass
-
-    data = await state.get_data()
-    reps = data['reps']
-    ex_id = data['current_exercise_id']
-    training_session_id = data['training_session_id']
-
-    # Запись подхода
-    set_data = {
-        'exercise_id': ex_id,
-        'weight': weight,
-        'repetitions': reps,
-        'training_session_id': training_session_id
-    }
-    await orm_add_set(session, set_data)
-
-    # Проверяем, standard или circuit
-    if data.get('standard_ex_ids'):
-        await process_standard_after_set(message, state, session)
-    elif data.get('circuit_ex_ids'):
-        await process_circuit_after_set(message, state, session)
-    else:
-        await message.answer("Ошибка: не найдено ни standard_ex_ids, ни circuit_ex_ids.")
-        await state.clear()
-
-
-async def process_standard_after_set(message: types.Message, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     bot_msg_id = data['bot_message_id']
     ex_id = data['current_exercise_id']
@@ -1016,6 +952,7 @@ async def process_standard_after_set(message: types.Message, state: FSMContext, 
     total_sets = ex_obj.base_sets if ex_obj else 3
 
     if set_index < total_sets:
+        # Переходим к следующему подходу
         set_index += 1
         await state.update_data(set_index=set_index)
         new_text = f"Подход {set_index} из {total_sets}\nВведите кол-во повторений:"
@@ -1026,10 +963,10 @@ async def process_standard_after_set(message: types.Message, state: FSMContext, 
         )
         await state.set_state(TrainingProcess.reps)
     else:
-        # Закончили подходы для этого упражнения
+        # Закончили все подходы этого упражнения
         standard_ex_idx += 1
         if standard_ex_idx < len(standard_ex_ids):
-            # Следующее упражнение
+            # Переходим к следующему упражнению в блоке
             await state.update_data(standard_ex_idx=standard_ex_idx, set_index=1)
             next_ex_id = standard_ex_ids[standard_ex_idx]
             next_ex = await orm_get_exercise(session, next_ex_id)
@@ -1045,11 +982,52 @@ async def process_standard_after_set(message: types.Message, state: FSMContext, 
             )
             await state.set_state(TrainingProcess.reps)
         else:
-            # Все упражнения блока => следующий блок
+            # Все упражнения блока завершены => переходим к следующему блоку
             await move_to_next_block_in_day(message, state, session)
 
 
-async def process_circuit_after_set(message: types.Message, state: FSMContext, session: AsyncSession):
+###################################################################
+#    ОБРАБОТКА КРУГОВОГО БЛОКА
+###################################################################
+
+async def start_circuit_block(message: types.Message, state: FSMContext, session, ex_objs: list):
+    """
+    Начинаем круговой блок (circle_training=True).
+    Все упражнения в этом блоке будут выполняться раундами.
+    """
+    data = await state.get_data()
+    bot_msg_id = data.get('bot_message_id')
+
+    ex_ids = [ex.id for ex in ex_objs]
+    await state.update_data(
+        circuit_ex_ids=ex_ids,
+        circuit_ex_idx=0,
+        circuit_round=1
+    )
+
+    first_ex = ex_objs[0]
+    text = (
+        f"Блок круговых упражнений.\n\n"
+        f"Раунд 1 из {CIRCULAR_ROUNDS}\n\n"
+        f"{first_ex.name}\n{first_ex.description}\n\n"
+        "Введите количество повторений:"
+    )
+    await message.bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=bot_msg_id,
+        text=text
+    )
+    await state.update_data(current_exercise_id=first_ex.id)
+    await state.set_state(TrainingProcess.reps)
+
+
+async def process_circuit_after_set(message: types.Message, state: FSMContext, session):
+    """
+    Когда пользователь ввёл вес для текущего кругового упражнения.
+    Проверяем, нужно ли перейти к следующему упражнению внутри раунда
+    либо начать следующий раунд,
+    либо завершить этот круговый блок.
+    """
     data = await state.get_data()
     bot_msg_id = data['bot_message_id']
     c_ex_ids = data['circuit_ex_ids']
@@ -1058,7 +1036,7 @@ async def process_circuit_after_set(message: types.Message, state: FSMContext, s
 
     c_idx += 1
     if c_idx < len(c_ex_ids):
-        # Следующее упражнение
+        # Переход к следующему упражнению в этом же раунде
         await state.update_data(circuit_ex_idx=c_idx)
         next_ex_id = c_ex_ids[c_idx]
         next_ex = await orm_get_exercise(session, next_ex_id)
@@ -1076,8 +1054,9 @@ async def process_circuit_after_set(message: types.Message, state: FSMContext, s
         )
         await state.set_state(TrainingProcess.reps)
     else:
-        # Все упражнения круга
+        # Закончились упражнения этого раунда
         if c_round < CIRCULAR_ROUNDS:
+            # Переходим к следующему раунду
             c_round += 1
             await state.update_data(circuit_round=c_round)
             rest_text = f"Раунд {c_round - 1} завершён! Отдых {CIRCULAR_REST_BETWEEN_ROUNDS} сек..."
@@ -1088,7 +1067,7 @@ async def process_circuit_after_set(message: types.Message, state: FSMContext, s
             )
             await asyncio.sleep(CIRCULAR_REST_BETWEEN_ROUNDS)
 
-            # Новый раунд
+            # Снова идём с 0-го упражнения
             await state.update_data(circuit_ex_idx=0)
             first_id = c_ex_ids[0]
             first_ex = await orm_get_exercise(session, first_id)
@@ -1106,24 +1085,45 @@ async def process_circuit_after_set(message: types.Message, state: FSMContext, s
             )
             await state.set_state(TrainingProcess.reps)
         else:
-            # Все раунды => следующий блок
+            # Все раунды пройдены => двигаемся дальше
             await move_to_next_block_in_day(message, state, session)
 
 
-async def move_to_next_block_in_day(message: types.Message, state: FSMContext, session: AsyncSession):
+###################################################################
+#    ЛОГИКА ПЕРЕХОДА МЕЖДУ БЛОКАМИ
+###################################################################
+
+async def move_to_next_block_in_day(message: types.Message, state: FSMContext, session):
+    """
+    Переходим к следующему блоку (увеличиваем block_index). Если блоков больше нет — финиш.
+    """
     data = await state.get_data()
     blocks_data = data['blocks']
     block_index = data['block_index']
     block_index += 1
-    if block_index >= len(blocks_data):
-        await finish_training(message, state, session)
-        return
-
     await state.update_data(block_index=block_index)
-    await process_current_block(message, state, session)
+
+    if block_index >= len(blocks_data):
+        # Все блоки пройдены
+        await finish_training(message, state, session)
+    else:
+        # Продолжаем: процесс текущего блока
+        await process_current_block(message, state, session)
 
 
-async def finish_training(message: types.Message, state: FSMContext, session: AsyncSession):
+###################################################################
+#    ФИНАЛ ТРЕНИРОВКИ + ВЫВОД РЕЗУЛЬТАТОВ
+###################################################################
+
+async def finish_training(message: types.Message, state: FSMContext, session):
+    """
+    Завершаем тренировку:
+    1) Удаляем служебное сообщение
+    2) Для всех упражнений из training_day_id достаём подходы (Sets),
+       привязанные к training_session_id
+    3) Выводим отчёт
+    4) Сбрасываем состояние
+    """
     data = await state.get_data()
     training_day_id = data.get("training_day_id")
     training_session_id = data.get("training_session_id")
@@ -1136,9 +1136,9 @@ async def finish_training(message: types.Message, state: FSMContext, session: As
         except:
             pass
 
-    # Формируем итог
+    # Формируем итоговый отчёт
     all_exs = await orm_get_exercises(session, training_day_id)
-    result_message = "Тренировка завершена, отличная работа!\n/\nВаши результаты:\n"
+    result_message = "Тренировка завершена! Отличная работа!\n\nВаши результаты:\n"
     for ex in all_exs:
         result_message += f"\nУпражнение: {ex.name}\n"
         sets = await orm_get_sets_by_session(session, ex.id, training_session_id)
@@ -1148,6 +1148,88 @@ async def finish_training(message: types.Message, state: FSMContext, session: As
         else:
             result_message += "  Нет данных о подходах.\n"
 
+    # Отправляем сообщение
     bot_msg = await message.answer(result_message)
     await state.clear()
     await state.update_data(bot_message_id=bot_msg.message_id)
+
+
+###################################################################
+#    ОБРАБОТЧИКИ ВВОДА ПОВТОРЕНИЙ/ВЕСА
+###################################################################
+
+@user_private_router.message(TrainingProcess.reps)
+async def process_reps_input(message: types.Message, state: FSMContext):
+    """
+    Состояние TrainingProcess.reps:
+    Пользователь вводит количество повторений.
+    """
+    try:
+        reps = int(message.text)
+        if reps <= 0:
+            raise ValueError
+    except ValueError:
+        await message.reply("Ошибка: введите положительное целое число повторений.")
+        return
+
+    # Удаляем сообщение пользователя из чата
+    try:
+        await message.delete()
+    except:
+        pass
+
+    await state.update_data(reps=reps)
+    data = await state.get_data()
+    bot_msg_id = data.get("bot_message_id")
+
+    await message.bot.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=bot_msg_id,
+        text="Введите вес снаряда (в кг):"
+    )
+    await state.set_state(TrainingProcess.weight)
+
+
+@user_private_router.message(TrainingProcess.weight)
+async def process_weight_input(message: types.Message, state: FSMContext, session):
+    """
+    Состояние TrainingProcess.weight:
+    Пользователь вводит вес.
+    Сохраняем подход в БД (Set).
+    """
+    try:
+        weight = float(message.text.replace(',', '.'))
+        if weight < 0:
+            raise ValueError
+    except ValueError:
+        await message.reply("Ошибка: вес >= 0.")
+        return
+
+    # Удаляем сообщение пользователя из чата
+    try:
+        await message.delete()
+    except:
+        pass
+
+    data = await state.get_data()
+    reps = data['reps']
+    ex_id = data['current_exercise_id']
+    training_session_id = data['training_session_id']
+
+    # Записываем подход в БД
+    set_data = {
+        'exercise_id': ex_id,
+        'weight': weight,
+        'repetitions': reps,
+        'training_session_id': training_session_id
+    }
+    await orm_add_set(session, set_data)
+
+    # Проверяем, это блок standard или circuit
+    if data.get('standard_ex_ids'):
+        await process_standard_after_set(message, state, session)
+    elif data.get('circuit_ex_ids'):
+        await process_circuit_after_set(message, state, session)
+    else:
+        await message.answer("Ошибка: не найдено ни standard_ex_ids, ни circuit_ex_ids.")
+        await state.clear()
