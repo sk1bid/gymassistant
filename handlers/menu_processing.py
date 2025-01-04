@@ -841,7 +841,7 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
             if action in ["prg_stg", "turn_on_prgm", "turn_off_prgm"] or action.startswith(
                     "to_del_prgm") or action.startswith("prgm_del"):
                 return await program_settings(session, level, training_program_id, action, user_id)
-            if action == "t_d":
+            if action == "t_d" or action.startswith("next") or action.startswith("prev"):
                 return await show_result(session, level, exercises_page, page, session_number)
             return await training_days(session, level, training_program_id, page)
 
