@@ -45,7 +45,7 @@ from kbds.inline import (
     get_exercise_settings_btns,
     get_training_process_btns,
     get_user_main_btns,
-    get_custom_exercise_btns, get_sessions_results_btns, get_session_result_btns,
+    get_custom_exercise_btns, get_sessions_results_btns, get_exercises_result_btns,
 )
 from utils.paginator import Paginator
 
@@ -206,11 +206,17 @@ async def training_results(session: AsyncSession, level: int, user_id: int, page
         return error_image, kbds
 
 
-async def show_result(session: AsyncSession, level: int, page: int, session_number: str):
+async def show_result(session: AsyncSession, level: int, page: int, session_page: int, session_number: str):
+    """
+    Показывает упражнения (с пагинацией) в рамках конкретной тренировочной сессии.
+    """
     try:
         banner = await orm_get_banner(session, "training_stats")
+
         if session_number:
+
             session_id = retrieve_data_temporarily(session_number)
+
             session_data = await orm_get_training_session(session, session_id)
             if not session_data:
                 banner_image = InputMediaPhoto(
@@ -220,15 +226,12 @@ async def show_result(session: AsyncSession, level: int, page: int, session_numb
                 kbds = error_btns()
                 return banner_image, kbds
 
-            # 1) Получаем все подходы
             all_sets_query = await session.execute(
                 select(Set).where(Set.training_session_id == session_data.id)
             )
             all_sets = all_sets_query.scalars().all()
 
-            # 2) Готовим словарь ex_id -> { "exercise": Exercise, "sets": [Set, Set, ...] }
             exercises_map = {}
-
             for s_obj in all_sets:
                 ex_obj = await orm_get_exercise(session, s_obj.exercise_id)
 
@@ -239,36 +242,57 @@ async def show_result(session: AsyncSession, level: int, page: int, session_numb
                     }
                 exercises_map[ex_obj.id]["sets"].append(s_obj)
 
-            # 3) Формируем итоговый текст
-            result_message = "<strong>Результаты вашей тренировки</strong>\n"
+            exercise_items = list(exercises_map.items())
 
-            for ex_id, data_dict in exercises_map.items():
-                ex = data_dict["exercise"]
-                sets_for_ex = data_dict["sets"]
+            paginator = Paginator(array=exercise_items, page=page, per_page=5)
+            current_page_data = paginator.get_page()
 
-                result_message += f"\nУпражнение: {ex.name}\n"
+            result_message = (
+                f"<strong>Результаты вашей тренировки\n"
+                f"Страница {paginator.page}/{paginator.pages}</strong>"
+            )
 
-                if sets_for_ex:
-                    for idx, s in enumerate(sets_for_ex, start=1):
-                        result_message += (
-                            f"  Подход {idx}: {s.repetitions} повторений "
-                            f"с весом {s.weight} кг\n"
-                        )
-                else:
-                    result_message += "  Нет данных о подходах.\n"
+            if not current_page_data:
+
+                result_message += "\n\nУпражнений на этой странице нет."
+            else:
+
+                for idx, (ex_id, data_dict) in enumerate(current_page_data, start=1):
+                    ex = data_dict["exercise"]
+                    sets_for_ex = data_dict["sets"]
+
+                    result_message += f"\n\n{idx}. Упражнение: {ex.name}"
+                    if sets_for_ex:
+                        for s_i, s in enumerate(sets_for_ex, start=1):
+                            result_message += (
+                                f"\n   Подход {s_i}: "
+                                f"{s.repetitions} повторений, вес={s.weight} кг"
+                            )
+                    else:
+                        result_message += "\n   Нет данных о подходах."
 
             banner_image = InputMediaPhoto(
                 media=banner.image,
                 caption=result_message
             )
+
+            exercise_pagination_btns = pages(paginator, "exercises")
+
+            kbds = get_exercises_result_btns(
+                level=level,
+                session_number=session_number,
+                pagination_btns=exercise_pagination_btns,
+                page=page, session_page=session_page,
+            )
+
         else:
-            session_data = None
+
             banner_image = InputMediaPhoto(
                 media=banner.image,
                 caption="<strong>Тренировка не обнаружена</strong>"
             )
+            kbds = error_btns()
 
-        kbds = get_session_result_btns(level=level, page=page, sessions=session_data)
         return banner_image, kbds
 
     except Exception as e:
@@ -279,7 +303,6 @@ async def show_result(session: AsyncSession, level: int, page: int, session_numb
         )
         kbds = error_btns()
         return error_image, kbds
-
 
 
 async def schedule(session: AsyncSession, level: int, action: str, training_day_id: int, user_id: int):
@@ -410,9 +433,9 @@ async def programs_catalog(session: AsyncSession, level: int, action: str, user_
 def pages(paginator: Paginator, program_name: str):
     btns = {}
     if paginator.has_previous():
-        btns["◀ Пред."] = f"previous_{program_name}"
+        btns["◀ Пред."] = f"prev"
     if paginator.has_next():
-        btns["След. ▶"] = f"next_{program_name}"
+        btns["След. ▶"] = f"next"
     return btns
 
 
@@ -790,7 +813,7 @@ async def custom_exercises(session: AsyncSession, level: int, training_day_id: i
 async def get_menu_content(session: AsyncSession, level: int, action: str, training_program_id: int = None,
                            exercise_id: int = None, page: int = None, training_day_id: int = None, user_id: int = None,
                            category_id: int = None, month: int = None, year: int = None, set_id: int = None,
-                           empty: bool = False, circle_training: bool = False, session_number: str = None):
+                           empty: bool = False, circle_training: bool = False, session_number: str = None, exercises_page: int = None):
     start_time = time.monotonic()
     try:
 
@@ -809,7 +832,7 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
             # Программа или процесс тренировки
             if action == "training_process":
                 return await training_process(session, level, training_day_id)
-            if action == "training_stats" or action.startswith("next") or action.startswith("previous"):
+            if action == "trd_sts" or action.startswith("next") or action.startswith("prev"):
                 return await training_results(session, level, user_id, page)
             return await program(session, level, training_program_id, user_id)
 
@@ -819,7 +842,7 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
                     "to_del_prgm") or action.startswith("prgm_del"):
                 return await program_settings(session, level, training_program_id, action, user_id)
             if action == "t_d":
-                return await show_result(session, level, page, session_number)
+                return await show_result(session, level, exercises_page, page, session_number)
             return await training_days(session, level, training_program_id, page)
 
         elif level == 4:

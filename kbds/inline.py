@@ -36,6 +36,7 @@ class MenuCallBack(CallbackData, prefix="menu"):
     month: int | None = None
     circle_training: bool = False
     session_number: str | None = None
+    exercises_page: int = 1
 
 
 def error_btns() -> InlineKeyboardMarkup:
@@ -119,7 +120,7 @@ def get_profile_btns(
     """
     keyboard = InlineKeyboardBuilder()
 
-    stats_callback = MenuCallBack(level=level + 1, action='training_stats').pack()
+    stats_callback = MenuCallBack(level=level + 1, action='trd_sts').pack()
 
     # settings_callback = MenuCallBack(level=level + 1, action='settings').pack()
 
@@ -141,7 +142,7 @@ def get_sessions_results_btns(
         level: int,
         page: int,
         pagination_btns: dict,
-        sessions: list,  # список TrainingSession
+        sessions: list,
         sizes: tuple[int] = (1, 1)
 ) -> InlineKeyboardMarkup:
     """
@@ -171,7 +172,6 @@ def get_sessions_results_btns(
             )
         )
 
-
     # Кнопки пагинации (prev / next)
     row = []
     for text, act in pagination_btns.items():
@@ -192,26 +192,52 @@ def get_sessions_results_btns(
 
     keyboard.row(
         InlineKeyboardButton(
-            text="⬅️ Назад",
+            text="⬅️ Назад (Профиль)",
             callback_data=MenuCallBack(level=level - 1, action='profile').pack()
         )
     )
     return keyboard.adjust(*sizes).as_markup()
 
 
-def get_session_result_btns(
+def get_exercises_result_btns(
         *,
         level: int,
         page: int,
-        sessions: list,
-):
+        session_page: int,
+        session_number: str,
+        pagination_btns: dict,
+) -> InlineKeyboardMarkup:
+    """
+    Клавиатура для показа упражнений текущей сессии с пагинацией.
+    - Передаём session_number, чтобы при переключении страниц
+      продолжать работать с той же тренировочной сессией.
+    """
     keyboard = InlineKeyboardBuilder()
 
-    # Кнопка "Назад"
+    # Кнопки «Предыдущая страница» / «Следующая страница»
+    row = []
+    for text, act in pagination_btns.items():
+        new_page = page + 1 if act.startswith("next") else page - 1
+        row.append(
+            InlineKeyboardButton(
+                text=text,
+                callback_data=MenuCallBack(
+                    level=level,
+                    action=act,
+                    exercises_page=new_page,
+                    page=session_page,
+                    session_number=session_number
+                ).pack()
+            )
+        )
+    if row:
+        keyboard.row(*row)
+
+    # Кнопка «⬅️ Назад» — например, возвращаемся к списку сессий
     keyboard.row(
         InlineKeyboardButton(
-            text="⬅️ Назад",
-            callback_data=MenuCallBack(level=level - 1, action='training_stats', page=page).pack()
+            text="⬅️ Назад (Тренировки)",
+            callback_data=MenuCallBack(level=level - 1, action='trd_sts', page=session_page).pack()
         )
     )
 
