@@ -261,7 +261,7 @@ async def show_result(session: AsyncSession, level: int, page: int, session_page
                     ex = data_dict["exercise"]
                     sets_for_ex = data_dict["sets"]
 
-                    result_message += f"\n\n{idx}. Упражнение: {ex.name}"
+                    result_message += f"\n\nУпражнение: {ex.name}"
                     if sets_for_ex:
                         for s_i, s in enumerate(sets_for_ex, start=1):
                             result_message += (
