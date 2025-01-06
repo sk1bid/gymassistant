@@ -45,7 +45,9 @@ from kbds.inline import (
     get_exercise_settings_btns,
     get_training_process_btns,
     get_user_main_btns,
-    get_custom_exercise_btns, get_sessions_results_btns, get_exercises_result_btns,
+    get_custom_exercise_btns,
+    get_sessions_results_btns,
+    get_exercises_result_btns,
 )
 from utils.paginator import Paginator
 
@@ -187,7 +189,7 @@ async def training_results(session: AsyncSession, level: int, user_id: int, page
         )
 
         # Генерируем кнопки
-        pagination_btns = pages(paginator, "training_sess")
+        pagination_btns = pages(paginator, "t")
         kbds = get_sessions_results_btns(
             level=level,
             page=page,
@@ -276,7 +278,7 @@ async def show_result(session: AsyncSession, level: int, page: int, session_page
                 caption=result_message
             )
 
-            exercise_pagination_btns = pages(paginator, "exercises")
+            exercise_pagination_btns = pages(paginator, "d")
 
             kbds = get_exercises_result_btns(
                 level=level,
@@ -433,9 +435,9 @@ async def programs_catalog(session: AsyncSession, level: int, action: str, user_
 def pages(paginator: Paginator, program_name: str):
     btns = {}
     if paginator.has_previous():
-        btns["◀ Пред."] = f"prev"
+        btns["◀ Пред."] = f"prev_{program_name}"
     if paginator.has_next():
-        btns["След. ▶"] = f"next"
+        btns["След. ▶"] = f"next_{program_name}"
     return btns
 
 
@@ -446,7 +448,8 @@ async def program(session: AsyncSession, level: int, training_program_id: int, u
         user_data = await orm_get_user_by_id(session, user_id)
         indicator = "🟢" if user_data.actual_program_id == user_program.id else "🔴"
         banner_image = InputMediaPhoto(media=banner.image,
-                                       caption=f"<strong>{banner.description + user_program.name + ' ' + indicator}</strong>")
+                                       caption=f"<strong>{banner.description + user_program.name + ' ' + indicator}"
+                                               f"</strong>")
         kbds = get_program_btns(level=level, user_program_id=training_program_id)
         return banner_image, kbds
     except Exception as e:
@@ -813,7 +816,8 @@ async def custom_exercises(session: AsyncSession, level: int, training_day_id: i
 async def get_menu_content(session: AsyncSession, level: int, action: str, training_program_id: int = None,
                            exercise_id: int = None, page: int = None, training_day_id: int = None, user_id: int = None,
                            category_id: int = None, month: int = None, year: int = None, set_id: int = None,
-                           empty: bool = False, circle_training: bool = False, session_number: str = None, exercises_page: int = None):
+                           empty: bool = False, circle_training: bool = False, session_number: str = None,
+                           exercises_page: int = None):
     start_time = time.monotonic()
     try:
 
@@ -832,7 +836,7 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
             # Программа или процесс тренировки
             if action == "training_process":
                 return await training_process(session, level, training_day_id)
-            if action == "trd_sts" or action.startswith("next") or action.startswith("prev"):
+            if action == "trd_sts" or action.startswith("next_t") or action.startswith("prev_t"):
                 return await training_results(session, level, user_id, page)
             return await program(session, level, training_program_id, user_id)
 
@@ -841,7 +845,7 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
             if action in ["prg_stg", "turn_on_prgm", "turn_off_prgm"] or action.startswith(
                     "to_del_prgm") or action.startswith("prgm_del"):
                 return await program_settings(session, level, training_program_id, action, user_id)
-            if action == "t_d" or action.startswith("next") or action.startswith("prev"):
+            if action == "t_d" or action.startswith("next_e") or action.startswith("prev_e"):
                 return await show_result(session, level, exercises_page, page, session_number)
             return await training_days(session, level, training_program_id, page)
 
