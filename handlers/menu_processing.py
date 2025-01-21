@@ -78,28 +78,33 @@ def exercises_in_program(user_exercises: list, circle_training: bool = False):
             caption_text += "<strong>Упражнений пока нет. Добавьте новое упражнение!</strong>"
         return caption_text
 
-    in_circular_block = False  # Флаг для отслеживания нахождения внутри круговой тренировки
-
-    # Проверяем, есть ли круговые упражнения
-    circular_present = any(ex.circle_training for ex in user_exercises)
+    # Группируем упражнения в блоки
+    blocks = []
+    current_block = []
+    current_block_type = None  # 'circular' или 'standard'
 
     for ex in user_exercises:
-        if ex.circle_training and not in_circular_block:
-            # Начало круговой тренировки перед первым круговым упражнением
-            caption_text += "<strong>Начало круговой тренировки</strong>\n"
-            in_circular_block = True
-        elif not ex.circle_training and in_circular_block:
-            # Конец круговой тренировки после последнего кругового упражнения
+        ex_type = 'circular' if ex.circle_training else 'standard'
+        if ex_type != current_block_type:
+            if current_block:
+                blocks.append((current_block_type, current_block))
+            current_block = [ex]
+            current_block_type = ex_type
+        else:
+            current_block.append(ex)
+    if current_block:
+        blocks.append((current_block_type, current_block))
+
+    # Форматируем каждый блок
+    for block_type, exercises in blocks:
+        if block_type == 'circular':
+            caption_text += "<strong>Круговая тренировка:</strong>\n"
+            for ex in exercises:
+                caption_text += f"🔄 <b>{ex.name}</b>\n"
             caption_text += "<strong>Конец круговой тренировки</strong>\n"
-            in_circular_block = False
-
-        # Добавляем упражнение с соответствующей иконкой
-        icon = "🔄" if ex.circle_training else "🔘"
-        caption_text += f"{icon} <b>{ex.name}</b>\n"
-
-    # Если список упражнений заканчивается круговой тренировкой, добавляем конец блока
-    if in_circular_block:
-        caption_text += "<strong>Конец круговой тренировки</strong>\n"
+        else:
+            for ex in exercises:
+                caption_text += f"🔘 <b>{ex.name}</b>\n"
 
     # Добавляем сообщение о режиме круговой тренировки, если он активен
     if circle_training:
@@ -165,7 +170,7 @@ async def training_results(session: AsyncSession, level: int, user_id: int, page
         if not all_sessions:
             banner_image = InputMediaPhoto(
                 media=banner.image,
-                caption=f"<strong>{banner.description}\n\nНет ни одной сессии</strong>"
+                caption=f"<strong>{banner.description}\n\nНет ни одной тренировки</strong>"
             )
             # Пусть клавиатура будет только "назад"
             kbds = get_sessions_results_btns(
@@ -179,7 +184,7 @@ async def training_results(session: AsyncSession, level: int, user_id: int, page
 
         # Формируем caption с информацией о том, какая страница и сколько всего страниц
         caption = (
-            f"<strong>Ваши тренировочные сессии\n"
+            f"<strong>Ваши тренировки\n"
             f"Страница {paginator.page}/{paginator.pages}\n\n"
             f"{banner.description}</strong>"
         )
@@ -245,8 +250,7 @@ async def show_result(session: AsyncSession, level: int, page: int, session_page
                 exercises_map[ex_obj.id]["sets"].append(s_obj)
 
             exercise_items = list(exercises_map.items())
-
-            paginator = Paginator(array=exercise_items, page=page, per_page=5)
+            paginator = Paginator(array=exercise_items, page=page, per_page=2)
             current_page_data = paginator.get_page()
 
             result_message = (
@@ -263,12 +267,12 @@ async def show_result(session: AsyncSession, level: int, page: int, session_page
                     ex = data_dict["exercise"]
                     sets_for_ex = data_dict["sets"]
 
-                    result_message += f"\n\nУпражнение: {ex.name}"
+                    result_message += f"\n\n👉Упражнение: {ex.name}"
                     if sets_for_ex:
                         for s_i, s in enumerate(sets_for_ex, start=1):
                             result_message += (
-                                f"\n   Подход {s_i}: "
-                                f"{s.repetitions} повторений, вес={s.weight} кг"
+                                f"\nПодход <strong>{s_i}</strong>: "
+                                f"{s.repetitions} повтор., вес: <strong>{s.weight}</strong> кг/блок"
                             )
                     else:
                         result_message += "\n   Нет данных о подходах."
@@ -435,9 +439,9 @@ async def programs_catalog(session: AsyncSession, level: int, action: str, user_
 def pages(paginator: Paginator, program_name: str):
     btns = {}
     if paginator.has_previous():
-        btns["◀ Пред."] = f"prev_{program_name}"
+        btns["◀ Пред."] = f"p_{program_name}"
     if paginator.has_next():
-        btns["След. ▶"] = f"next_{program_name}"
+        btns["След. ▶"] = f"n_{program_name}"
     return btns
 
 
@@ -836,7 +840,7 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
             # Программа или процесс тренировки
             if action == "training_process":
                 return await training_process(session, level, training_day_id)
-            if action == "trd_sts" or action.startswith("next_t") or action.startswith("prev_t"):
+            if action == "trd_sts" or action.startswith("n_t") or action.startswith("p_t"):
                 return await training_results(session, level, user_id, page)
             return await program(session, level, training_program_id, user_id)
 
@@ -845,7 +849,7 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
             if action in ["prg_stg", "turn_on_prgm", "turn_off_prgm"] or action.startswith(
                     "to_del_prgm") or action.startswith("prgm_del"):
                 return await program_settings(session, level, training_program_id, action, user_id)
-            if action == "t_d" or action.startswith("next_e") or action.startswith("prev_e"):
+            if action == "t_d" or action.startswith("n_d") or action.startswith("p_d"):
                 return await show_result(session, level, exercises_page, page, session_number)
             return await training_days(session, level, training_program_id, page)
 

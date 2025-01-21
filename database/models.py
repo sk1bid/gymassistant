@@ -102,6 +102,13 @@ class TrainingProgram(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(50))
     user_id: Mapped[int] = mapped_column(ForeignKey('user.user_id'), nullable=False)
+    rest_between_exercise: Mapped[int] = mapped_column(Integer(), nullable=False, default=300)  # 5 минут стандарт
+    rest_between_set: Mapped[int] = mapped_column(Integer(), nullable=False, default=300)
+    circular_rounds: Mapped[int] = mapped_column(Integer(), nullable=False, default=3)  # 3 круга стандарт
+    circular_rest_between_rounds: Mapped[int] = mapped_column(Integer(), nullable=False,
+                                                              default=300)  # 5 минут стандарт
+    circular_rest_between_exercise: Mapped[int] = mapped_column(Integer(), nullable=False,
+                                                                default=60)  # 1 минут стандарт
 
     user: Mapped['User'] = relationship(backref='training_program', lazy='select')
     training_days: Mapped[List['TrainingDay']] = relationship(

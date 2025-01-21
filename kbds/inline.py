@@ -217,7 +217,7 @@ def get_exercises_result_btns(
     # Кнопки «Предыдущая страница» / «Следующая страница»
     row = []
     for text, act in pagination_btns.items():
-        new_page = page + 1 if act.startswith("next") else page - 1
+        new_page = page + 1 if act.startswith("n") else page - 1
         row.append(
             InlineKeyboardButton(
                 text=text,
@@ -563,7 +563,7 @@ def get_training_day_btns(
                     action=act,
                     program_id=user_program_id,
                     training_day_id=training_day_id,
-                    page=page + 1 if act.startswith("next") else page - 1
+                    page=page + 1 if act.startswith("n") else page - 1
                 ).pack()
             )
         )

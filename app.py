@@ -8,7 +8,6 @@ from aiogram.enums import ParseMode
 
 from dotenv import find_dotenv, load_dotenv
 
-from database.orm_query import initialize_all_positions
 
 load_dotenv(find_dotenv())
 
@@ -57,9 +56,6 @@ async def on_startup(bot: Bot):
 
     # Создаём базу данных и инициализируем позиции
     await create_db()
-    async with session_maker() as session:
-        await initialize_all_positions(session)
-        logging.info("Инициализация значений position завершена.")
 
 
 async def on_shutdown(bot: Bot):

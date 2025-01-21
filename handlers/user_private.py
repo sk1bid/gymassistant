@@ -1,7 +1,7 @@
 import asyncio
-import uuid
 import time
 import logging
+from typing import List
 
 from aiogram import F, Router, types
 from aiogram.filters import Command, StateFilter, CommandStart, or_f
@@ -10,7 +10,11 @@ from aiogram.fsm.state import State, StatesGroup
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Импорт ORM-функций
+# Импорт необходимых исключений Aiogram
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import ReplyKeyboardRemove
+
+# Импорт ORM-функций (обновите пути при необходимости)
 from database.orm_query import (
     orm_add_user,
     orm_update_user,
@@ -38,21 +42,20 @@ from database.orm_query import (
     orm_update_program,
     orm_update_exercise,
     orm_get_categories,
-    orm_delete_user_exercise, orm_add_training_session,
+    orm_delete_user_exercise,
+    orm_add_training_session,
+    orm_get_program,
 )
 
 # Ваши функции для меню/кнопок
 from handlers.menu_processing import get_menu_content
 from kbds.inline import MenuCallBack, get_url_btns, error_btns, get_callback_btns
+from kbds.reply import get_keyboard
 from utils.separator import get_action_part
 
 # Создаём роутер
 user_private_router = Router()
 user_private_router.message.filter(F.chat.type == "private")
-
-# --- Настройки круговой тренировки ---
-CIRCULAR_REST_BETWEEN_ROUNDS = 60  # (секунд) отдых между кругами
-CIRCULAR_ROUNDS = 4  # Сколько кругов делаем
 
 
 # ================== STATES ==================
@@ -75,6 +78,8 @@ class TrainingProcess(StatesGroup):
     """
     Состояния для процесса тренировки.
     """
+    rest = State()
+    circular_rest = State()
     training_day_id = State()
     exercise_index = State()
     set_index = State()
@@ -97,6 +102,16 @@ class AddExercise(StatesGroup):
     user_id = State()
 
     exercise_for_change = None
+
+
+# ================== HELPERS ==================
+async def send_error_message(message: types.Message, error: Exception):
+    logging.exception(f"Произошла ошибка: {error}")
+    btns = {"Написать разработчику": "https://t.me/cg_skbid"}
+    await message.answer(
+        "Произошла ошибка, попробуйте позже.",
+        reply_markup=get_url_btns(btns=btns, sizes=(1,)),
+    )
 
 
 @user_private_router.message(StateFilter(None), CommandStart())
@@ -253,7 +268,14 @@ async def clicked_btn(callback_data: MenuCallBack, state: FSMContext, selected_i
         circle_training=callback_data.circle_training,
     )
 
-    await callback.message.edit_media(media=media, reply_markup=reply_markup)
+    try:
+        await callback.message.edit_media(media=media, reply_markup=reply_markup)
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            pass  # Игнорируем, если контент действительно не изменился
+        else:
+            logging.warning(f"Ошибка при edit_media: {e}")
+
     await callback.answer()
 
 
@@ -405,6 +427,7 @@ async def add_exercise_description(
                 circle_training=data.get("circle_training")
             )
             await message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
+            await state.clear()
         else:
             categories = await orm_get_categories(session, message.from_user.id)
             btns = {category.name: str(category.id) for category, _ in categories}
@@ -537,7 +560,14 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     exercises_page=callback_data.exercises_page,
                 )
 
-            await callback.message.edit_media(media=media, reply_markup=reply_markup)
+            try:
+                await callback.message.edit_media(media=media, reply_markup=reply_markup)
+            except TelegramBadRequest as e:
+                if "message is not modified" in str(e):
+                    pass
+                else:
+                    logging.warning(f"Ошибка при edit_media: {e}")
+
             await callback.answer("Упражнение удалено.")
 
         elif get_action_part(action).startswith("mv"):
@@ -584,7 +614,13 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     session_number=callback_data.session_number,
                     exercises_page=callback_data.exercises_page,
                 )
-            await callback.message.edit_media(media=media, reply_markup=reply_markup)
+            try:
+                await callback.message.edit_media(media=media, reply_markup=reply_markup)
+            except TelegramBadRequest as e:
+                if "message is not modified" in str(e):
+                    pass
+                else:
+                    logging.warning(f"Ошибка при edit_media: {e}")
 
         elif get_action_part(action) == "to_del_prgm":
             await clicked_btn(session=session, callback_data=callback_data, state=state,
@@ -612,7 +648,14 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 session_number=callback_data.session_number,
                 exercises_page=callback_data.exercises_page,
             )
-            await callback.message.edit_media(media=media, reply_markup=reply_markup)
+            try:
+                await callback.message.edit_media(media=media, reply_markup=reply_markup)
+            except TelegramBadRequest as e:
+                if "message is not modified" in str(e):
+                    pass
+                else:
+                    logging.warning(f"Ошибка при edit_media: {e}")
+
             await callback.answer("Программа удалена.")
 
         elif get_action_part(action).startswith("➕") or get_action_part(action).startswith("➖"):
@@ -626,13 +669,19 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
             user_exercise_set = await orm_get_exercise_set(session, set_id)
 
             if field == "reps":
-                new_reps = user_exercise_set.reps + increment if operation == "➕" else max(1,
-                                                                                           user_exercise_set.reps - increment)
+                new_reps = (
+                    user_exercise_set.reps + increment
+                    if operation == "➕"
+                    else max(1, user_exercise_set.reps - increment)
+                )
                 await orm_update_exercise_set(session, set_id, new_reps)
 
             elif field == "sets":
-                new_sets = user_exercise.base_sets + increment if operation == "➕" else max(1,
-                                                                                            user_exercise.base_sets - increment)
+                new_sets = (
+                    user_exercise.base_sets + increment
+                    if operation == "➕"
+                    else max(1, user_exercise.base_sets - increment)
+                )
                 await orm_update_exercise(session, callback_data.exercise_id, {"sets": new_sets})
 
                 if operation == "➕":
@@ -679,7 +728,14 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     session_number=callback_data.session_number,
                     exercises_page=callback_data.exercises_page,
                 )
-            await callback.message.edit_media(media=media, reply_markup=reply_markup)
+            try:
+                await callback.message.edit_media(media=media, reply_markup=reply_markup)
+            except TelegramBadRequest as e:
+                if "message is not modified" in str(e):
+                    pass
+                else:
+                    logging.warning(f"Ошибка при edit_media: {e}")
+
             await callback.answer()
 
         elif get_action_part(action) == "training_process":
@@ -700,7 +756,14 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 session_number=callback_data.session_number,
                 exercises_page=callback_data.exercises_page,
             )
-            await callback.message.edit_media(media=media, reply_markup=reply_markup)
+            try:
+                await callback.message.edit_media(media=media, reply_markup=reply_markup)
+            except TelegramBadRequest as e:
+                if "message is not modified" in str(e):
+                    pass
+                else:
+                    logging.warning(f"Ошибка при edit_media: {e}")
+
             await callback.answer()
             await handle_start_training_process(callback, callback_data, state, session)
 
@@ -725,13 +788,35 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     session_number=callback_data.session_number,
                     exercises_page=callback_data.exercises_page,
                 )
-                await callback.message.edit_media(media=media, reply_markup=reply_markup)
+                try:
+                    await callback.message.edit_media(media=media, reply_markup=reply_markup)
+                except TelegramBadRequest as e:
+                    if "message is not modified" in str(e):
+                        pass
+                    else:
+                        logging.warning(f"Ошибка при edit_media: {e}")
+
                 user_data = await state.get_data()
                 bot_message_id = user_data.get('bot_message_id')
                 if bot_message_id:
-                    await callback.message.bot.delete_message(chat_id=callback.message.chat.id,
-                                                              message_id=bot_message_id)
+                    try:
+                        await callback.message.bot.delete_message(chat_id=callback.message.chat.id,
+                                                                  message_id=bot_message_id)
+                    except TelegramBadRequest as e:
+                        if "message to delete not found" in str(e):
+                            pass
+                        else:
+                            logging.warning(f"Не удалось удалить сообщение бота: {e}")
+                rest_message_id = user_data.get("rest_message_id")
+                if rest_message_id:
+                    try:
+                        await callback.message.bot.delete_message(chat_id=callback.message.chat.id,
+                                                                  message_id=rest_message_id)
+                    except TelegramBadRequest as e:
+                        if "message to delete not found" not in str(e):
+                            logging.warning(f"Не удалось удалить сообщение об отдыхе: {e}")
                 await state.clear()
+                await state.update_data(rest_ended=True)
             except Exception as e:
                 logging.warning(f"Не удалось удалить сообщение бота: {e}")
 
@@ -756,13 +841,18 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 exercises_page=callback_data.exercises_page,
             )
             await state.update_data(selected_exercise_id=None, selected_program_id=None)
-            await callback.message.edit_media(media=media, reply_markup=reply_markup)
+            try:
+                await callback.message.edit_media(media=media, reply_markup=reply_markup)
+            except TelegramBadRequest as e:
+                if "message is not modified" in str(e):
+                    pass
+                else:
+                    logging.warning(f"Ошибка при edit_media: {e}")
             await callback.answer()
 
     except Exception as e:
         if "message is not modified" in str(e):
-            # Игнорируем ошибку, если сообщение не изменилось
-            pass
+            pass  # Игнорируем
         else:
             await callback.message.answer(f"Произошла ошибка, попробуйте позже. {e}",
                                           reply_markup=error_btns())
@@ -771,85 +861,99 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
         logging.info(f"Обработка user_menu заняла {duration:.2f} секунд")
 
 
-# ----------------------------------------------------------------------
-#            ЛОГИКА СТАРТА ТРЕНИРОВКИ (Смешанно: Обычные + Круговые)
-# ----------------------------------------------------------------------
-
-@user_private_router.callback_query()
+# ------------------ Starting Training Process ------------------
+@user_private_router.callback_query(MenuCallBack.filter())
 async def handle_start_training_process(
         callback: types.CallbackQuery,
         callback_data: MenuCallBack,
         state: FSMContext,
-        session: AsyncSession
+        session: AsyncSession,
 ):
     """
-    Пример исправленного кода, при котором мы:
-    1) Создаём реальную тренировочную сессию в БД (TrainingSession).
-    2) Берём её UUID (id).
-    3) Сохраняем этот UUID в FSMContext как training_session_id.
-    4) Вся дальнейшая логика (добавление подходов) будет использовать существующий training_session_id,
-       что устраняет ошибку нарушения внешнего ключа.
+    Handles the start of the training process by:
+    1. Creating a training session in the DB.
+    2. Saving the session ID in FSMContext.
+    3. Initiating the training flow.
     """
-    # Шаг 1: Определяем user_id (у вас может быть другая логика)
     user_id = callback.from_user.id
 
-    # Шаг 2: Создаём запись в таблице training_session
-    # (Функция orm_add_training_session должна записать её в БД и вернуть объект TrainingSession)
-    new_session = await orm_add_training_session(session, {
-        "user_id": user_id,
-        "note": "Запуск тренировки"  # при желании меняйте, добавляйте дату и т.д.
-    })
+    try:
+        # Create a new training session
+        new_session = await orm_add_training_session(
+            session,
+            {
+                "user_id": user_id,
+                "note": "Запуск тренировки",
+            },
+        )
 
-    # Шаг 3: Берём реальный UUID из созданной строки
-    training_session_id = str(new_session.id)
+        user = await orm_get_user_by_id(session, user_id)
+        if not user:
+            await callback.message.answer("Пользователь не найден.")
+            await state.clear()
+            return
 
-    # Шаг 4: Сохраняем training_session_id в состояние FSM
-    await state.set_state(TrainingProcess.exercise_index)
-    await state.update_data(
-        training_session_id=training_session_id,
-        exercise_index=0,
-        set_index=1,
-        training_day_id=callback_data.training_day_id  # пример, если нужно
-    )
+        training_program = await orm_get_program(session, user.actual_program_id)
+        if not training_program:
+            await callback.message.answer("Тренировочная программа не найдена.")
+            await state.clear()
+            return
 
-    # Дальше ваша логика: получение упражнений, группировка, вывод и т.д.
-    exercises = await orm_get_exercises(session, callback_data.training_day_id)
-    if not exercises:
-        await callback.answer("Нет упражнений в этом тренировочном дне.")
-        await state.clear()
+        circular_rounds = training_program.circular_rounds
+        rest_between_exercise = training_program.rest_between_exercise
+        circular_rest_between_rounds = training_program.circular_rest_between_rounds
+        circular_rest_between_exercise = training_program.circular_rest_between_exercise
+        rest_between_set = training_program.rest_between_set
+
+        # Save training session ID and related data in FSMContext
+        training_session_id = str(new_session.id)
+        await state.set_state(TrainingProcess.exercise_index)
+        await state.update_data(
+            training_session_id=training_session_id,
+            exercise_index=0,
+            set_index=1,
+            training_day_id=callback_data.training_day_id,
+            circular_rounds=circular_rounds,
+            rest_between_exercise=rest_between_exercise,
+            rest_between_set=rest_between_set,
+            circular_rest_between_rounds=circular_rest_between_rounds,
+            circular_rest_between_exercise=circular_rest_between_exercise,
+        )
+
+        # Retrieve exercises for the training day
+        exercises = await orm_get_exercises(session, callback_data.training_day_id)
+        if not exercises:
+            await callback.answer("Нет упражнений в этом тренировочном дне.")
+            await state.clear()
+            return
+
+        # Group exercises into blocks (standard or circuit)
+        blocks = group_exercises_into_blocks(exercises)
+        if not blocks:
+            await callback.answer("Нет упражнений.")
+            await state.clear()
+            return
+
+        await state.update_data(blocks=[[ex.id for ex in block] for block in blocks], block_index=0)
+
+        # Inform the user about the preparation
+        bot_msg = await callback.message.answer("Подготовка к тренировке...")
+        await asyncio.sleep(1)
+        await state.update_data(bot_message_id=bot_msg.message_id)
+
+        # Start processing the first block
+        await process_current_block(callback.message, state, session)
         await callback.answer()
-        return
-
-    blocks = group_exercises_into_blocks(exercises)
-    await state.update_data(blocks=[[ex.id for ex in block] for block in blocks], block_index=0)
-
-    if not blocks:
-        await callback.answer("Нет упражнений.")
+    except Exception as e:
+        await send_error_message(callback.message, e)
         await state.clear()
-        await callback.answer()
-        return
-
-    bot_msg = await callback.message.answer("Подготовка к тренировке...")
-    await asyncio.sleep(1)
-    await state.update_data(bot_message_id=bot_msg.message_id)
-
-    await process_current_block(callback.message, state, session)
-    await callback.answer()
 
 
-###################################################################
-#    ГРУППИРОВКА УПРАЖНЕНИЙ И НАВИГАЦИЯ ПО БЛОКАМ
-###################################################################
-
-def group_exercises_into_blocks(exercises: list):
+# ------------------ Grouping Exercises ------------------
+def group_exercises_into_blocks(exercises: List) -> List[List]:
     """
-    Если подряд идут circle_training=True, объединяем их в один блок (circuit).
-    Иначе (False) -> standard-блок.
-
-    Пример:
-       [ex1(circle=True), ex2(circle=True), ex3(circle=False), ex4(circle=False)]
-       =>
-       [[ex1, ex2], [ex3, ex4]]
+    Groups exercises into blocks based on whether they are part of a circuit.
+    Consecutive circuit exercises are grouped together; others form standard blocks.
     """
     blocks = []
     i = 0
@@ -872,317 +976,575 @@ def group_exercises_into_blocks(exercises: list):
     return blocks
 
 
-async def process_current_block(message: types.Message, state: FSMContext, session):
+# ------------------ Processing Current Block ------------------
+async def process_current_block(
+        message: types.Message, state: FSMContext, session: AsyncSession
+):
     """
-    Обработка текущего блока упражнений. Если блок пуст или индекс за границами, завершаем.
-    Иначе определяем, этот блок — стандартный или круговой.
+    Processes the current exercise block. Determines if it's a standard or circuit block.
     """
     data = await state.get_data()
-    blocks_data = data.get('blocks', [])
-    block_index = data.get('block_index', 0)
+    blocks = data.get("blocks", [])
+    block_index = data.get("block_index", 0)
 
-    if block_index >= len(blocks_data):
-        # Все блоки пройдены
+    if block_index >= len(blocks):
+        # All blocks completed
         await finish_training(message, state, session)
         return
 
-    ex_ids = blocks_data[block_index]
+    ex_ids = blocks[block_index]
     ex_objs = []
     is_circuit = True
 
-    # Проверяем, все ли упражнения circle_training=True
+    # Verify if all exercises in the block are part of a circuit
     for ex_id in ex_ids:
         ex_obj = await orm_get_exercise(session, ex_id)
+        if not ex_obj:
+            logging.warning(f"Exercise ID {ex_id} not found.")
+            continue
         ex_objs.append(ex_obj)
         if not ex_obj.circle_training:
             is_circuit = False
 
     if is_circuit:
-        # Сбрасываем "стандартные" ключи
-        await state.update_data(standard_ex_ids=None, standard_ex_idx=None, set_index=None)
+        await state.update_data(
+            standard_ex_ids=None,
+            standard_ex_idx=None,
+            set_index=None,
+            circuit_ex_ids=[ex.id for ex in ex_objs],
+            circuit_ex_idx=0,
+            circuit_round=1,
+        )
         await start_circuit_block(message, state, session, ex_objs)
     else:
-        # Сбрасываем "круговые" ключи
-        await state.update_data(circuit_ex_ids=None, circuit_ex_idx=None, circuit_round=None)
+        await state.update_data(
+            circuit_ex_ids=None,
+            circuit_ex_idx=None,
+            circuit_round=None,
+            standard_ex_ids=[ex.id for ex in ex_objs],
+            standard_ex_idx=0,
+            set_index=1,
+        )
         await start_standard_block(message, state, session, ex_objs)
 
 
-###################################################################
-#    ОБРАБОТКА СТАНДАРТНОГО БЛОКА
-###################################################################
-
-async def start_standard_block(message: types.Message, state: FSMContext, session, ex_objs: list):
+# ------------------ Starting Standard Block ------------------
+async def start_standard_block(
+        message: types.Message, state: FSMContext, session: AsyncSession, ex_objs: List
+):
     """
-    Начинаем блок стандартных упражнений (circle_training=False).
-    Если таких упражнений подряд несколько, обрабатываем их последовательно.
+    Initiates a standard exercise block.
     """
     data = await state.get_data()
-    bot_msg_id = data.get('bot_message_id')
+    bot_msg_id = data.get("bot_message_id")
 
-    ex_ids = [ex.id for ex in ex_objs]
-    await state.update_data(
-        standard_ex_ids=ex_ids,
-        standard_ex_idx=0,
-        set_index=1
-    )
+    if not ex_objs:
+        await message.answer("Нет упражнений в этом блоке.")
+        await move_to_next_block_in_day(message, state, session)
+        return
 
-    first_ex = ex_objs[0]
+    current_ex = ex_objs[0]
     text = (
-        f"Упражнение: {first_ex.name}\n{first_ex.description}\n\n"
-        f"Подход 1 из {first_ex.base_sets}\nВведите количество повторений:"
+        f"Упражнение: <strong>{current_ex.name}</strong>\n\n"
+        f"Подход <strong>1 из {current_ex.base_sets}</strong>\nВведите количество повторений:"
     )
 
-    # Показываем пользователю задание
-    await message.bot.edit_message_text(
-        chat_id=message.chat.id,
-        message_id=bot_msg_id,
-        text=text
-    )
-    # Запоминаем, что это текущее упражнение
-    await state.update_data(current_exercise_id=first_ex.id)
-    # Переходим к вводу повторений
+    try:
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=bot_msg_id,
+            text=text,
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            pass
+        else:
+            logging.warning(f"Ошибка при edit_message_text: {e}")
+
+    await state.update_data(current_exercise_id=current_ex.id)
     await state.set_state(TrainingProcess.reps)
 
 
-async def process_standard_after_set(message: types.Message, state: FSMContext, session):
+# ------------------ Processing After Standard Set ------------------
+async def process_standard_after_set(
+        message: types.Message, state: FSMContext, session: AsyncSession
+):
     """
-    Когда пользователь ввёл вес для текущего стандартного упражнения (т.е. завершил один подход).
-    Проверяем, нужно ли переходить к следующему подходу в этом же упражнении,
-    либо переключаемся на следующее упражнение в блоке,
-    либо завершаем блок и переходим к следующему блоку.
+    Handles the flow after completing a set in a standard block.
     """
     data = await state.get_data()
-    bot_msg_id = data['bot_message_id']
-    ex_id = data['current_exercise_id']
-    set_index = data.get('set_index', 1)
-    standard_ex_ids = data.get('standard_ex_ids', [])
-    standard_ex_idx = data.get('standard_ex_idx', 0)
+    bot_msg_id = data["bot_message_id"]
+    ex_id = data["current_exercise_id"]
+    set_index = data.get("set_index", 1)
+    standard_ex_ids = data.get("standard_ex_ids", [])
+    standard_ex_idx = data.get("standard_ex_idx", 0)
+    rest_between_set = data.get("rest_between_set")
 
     ex_obj = await orm_get_exercise(session, ex_id)
     total_sets = ex_obj.base_sets if ex_obj else 3
 
     if set_index < total_sets:
-        # Переходим к следующему подходу
         set_index += 1
         await state.update_data(set_index=set_index)
-        new_text = f"Подход {set_index} из {total_sets}\nВведите кол-во повторений:"
-        await message.bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=bot_msg_id,
-            text=new_text
+        rest_text = (f"Подход <strong>{set_index - 1}</strong> завершён! Отдых <strong>{rest_between_set // 60}"
+                     f"</strong> мин...")
+
+        # [CHANGE START] Используем try/except для edit_message_text
+        try:
+            await message.bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=bot_msg_id,
+                text=rest_text,
+            )
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                pass
+            else:
+                logging.warning(f"Ошибка при edit_message_text: {e}")
+        # [CHANGE END]
+
+        # Set state to 'rest' to handle rest period
+        await state.set_state(TrainingProcess.circular_rest)
+
+        # Start the rest period asynchronously
+        await asyncio.create_task(
+            handle_rest_period(message, state, session, rest_between_set))
+
+        text = (
+            f"Упражнение: <strong>{ex_obj.name}</strong>\n\n"
+            f"Подход <strong>{set_index} из {ex_obj.base_sets}</strong>\nВведите количество повторений:"
         )
+
+        try:
+            await message.bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=bot_msg_id,
+                text=text,
+            )
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                pass
+            else:
+                logging.warning(f"Ошибка при edit_message_text: {e}")
         await state.set_state(TrainingProcess.reps)
+
     else:
-        # Закончили все подходы этого упражнения
+        # Move to the next exercise in the block
         standard_ex_idx += 1
         if standard_ex_idx < len(standard_ex_ids):
-            # Переходим к следующему упражнению в блоке
             await state.update_data(standard_ex_idx=standard_ex_idx, set_index=1)
             next_ex_id = standard_ex_ids[standard_ex_idx]
             next_ex = await orm_get_exercise(session, next_ex_id)
-            await state.update_data(current_exercise_id=next_ex_id)
+            if not next_ex:
+                await message.answer("Следующее упражнение не найдено.")
+                await move_to_next_block_in_day(message, state, session)
+                return
+            await state.update_data(current_exercise_id=next_ex.id)
             text = (
-                f"Следующее упражнение: {next_ex.name}\n{next_ex.description}\n\n"
-                f"Подход 1 из {next_ex.base_sets}\nВведите кол-во повторений:"
+                f"Следующее упражнение: <strong>{next_ex.name}</strong>\n\n"
+                f"Подход 1 из {next_ex.base_sets}\nВведите количество повторений:"
             )
-            await message.bot.edit_message_text(
-                chat_id=message.chat.id,
-                message_id=bot_msg_id,
-                text=text
-            )
+
+            try:
+                await message.bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=bot_msg_id,
+                    text=text,
+                )
+            except TelegramBadRequest as e:
+                if "message is not modified" in str(e):
+                    pass
+                else:
+                    logging.warning(f"Ошибка при edit_message_text: {e}")
+
             await state.set_state(TrainingProcess.reps)
         else:
-            # Все упражнения блока завершены => переходим к следующему блоку
+            # All exercises in the block completed
             await move_to_next_block_in_day(message, state, session)
 
 
-###################################################################
-#    ОБРАБОТКА КРУГОВОГО БЛОКА
-###################################################################
-
-async def start_circuit_block(message: types.Message, state: FSMContext, session, ex_objs: list):
+# ------------------ Starting Circuit Block ------------------
+async def start_circuit_block(
+        message: types.Message, state: FSMContext, session: AsyncSession, ex_objs: List
+):
     """
-    Начинаем круговой блок (circle_training=True).
-    Все упражнения в этом блоке будут выполняться раундами.
+    Initiates a circuit exercise block.
     """
     data = await state.get_data()
-    bot_msg_id = data.get('bot_message_id')
+    bot_msg_id = data.get("bot_message_id")
+    circular_rounds = data.get("circular_rounds", 1)
 
-    ex_ids = [ex.id for ex in ex_objs]
-    await state.update_data(
-        circuit_ex_ids=ex_ids,
-        circuit_ex_idx=0,
-        circuit_round=1
-    )
+    if not ex_objs:
+        await message.answer("Нет упражнений в этом блоке.")
+        await move_to_next_block_in_day(message, state, session)
+        return
 
-    first_ex = ex_objs[0]
+    current_ex = ex_objs[0]
     text = (
-        f"Блок круговых упражнений.\n\n"
-        f"Раунд 1 из {CIRCULAR_ROUNDS}\n\n"
-        f"{first_ex.name}\n{first_ex.description}\n\n"
+        f"Блок круговых упражнений\n\n"
+        f"Круг <strong>1 из {circular_rounds}</strong>\n\n"
+        f"Упражнение: <strong>{current_ex.name}</strong>\n\n"
         "Введите количество повторений:"
     )
-    await message.bot.edit_message_text(
-        chat_id=message.chat.id,
-        message_id=bot_msg_id,
-        text=text
-    )
-    await state.update_data(current_exercise_id=first_ex.id)
-    await state.set_state(TrainingProcess.reps)
 
-
-async def process_circuit_after_set(message: types.Message, state: FSMContext, session):
-    """
-    Когда пользователь ввёл вес для текущего кругового упражнения.
-    Проверяем, нужно ли перейти к следующему упражнению внутри раунда
-    либо начать следующий раунд,
-    либо завершить этот круговый блок.
-    """
-    data = await state.get_data()
-    bot_msg_id = data['bot_message_id']
-    c_ex_ids = data['circuit_ex_ids']
-    c_idx = data.get('circuit_ex_idx', 0)
-    c_round = data.get('circuit_round', 1)
-
-    c_idx += 1
-    if c_idx < len(c_ex_ids):
-        # Переход к следующему упражнению в этом же раунде
-        await state.update_data(circuit_ex_idx=c_idx)
-        next_ex_id = c_ex_ids[c_idx]
-        next_ex = await orm_get_exercise(session, next_ex_id)
-        await state.update_data(current_exercise_id=next_ex_id)
-
-        text = (
-            f"Раунд {c_round} из {CIRCULAR_ROUNDS}\n"
-            f"Следующее упражнение: {next_ex.name}\n{next_ex.description}\n\n"
-            "Введите кол-во повторений:"
-        )
+    try:
         await message.bot.edit_message_text(
             chat_id=message.chat.id,
             message_id=bot_msg_id,
-            text=text
+            text=text,
         )
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            pass
+        else:
+            logging.warning(f"Ошибка при edit_message_text: {e}")
+
+    await state.update_data(current_exercise_id=current_ex.id)
+    await state.set_state(TrainingProcess.reps)
+
+
+# ------------------ Processing After Circuit Set ------------------
+async def process_circuit_after_set(
+        message: types.Message,
+        state: FSMContext,
+        session: AsyncSession
+):
+    """
+    Handles the flow after completing a set in a circuit block.
+    """
+    data = await state.get_data()
+    bot_msg_id = data["bot_message_id"]
+    c_ex_ids = data["circuit_ex_ids"]
+    c_idx = data.get("circuit_ex_idx", 0)
+    c_round = data.get("circuit_round", 1)
+    circular_rounds = data.get("circular_rounds", 1)
+    circular_rest_between_rounds = data.get("circular_rest_between_rounds", 60)
+    # [ADDED REST BETWEEN EXERCISES]
+    circular_rest_between_exercise = data.get("circular_rest_between_exercise", 0)
+    c_idx += 1
+    if c_idx < len(c_ex_ids):
+        # Закончили сет для упражнения c_idx-1,
+        # теперь — отдых между упражнениями (если > 0).
+        if circular_rest_between_exercise > 0:
+            rest_text = (
+                f"Отдых <strong>{circular_rest_between_exercise}</strong> сек. перед следующим упражнением..."
+            )
+            try:
+                await message.bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=bot_msg_id,
+                    text=rest_text,
+                )
+            except TelegramBadRequest as e:
+                if "message is not modified" in str(e):
+                    pass
+                else:
+                    logging.warning(f"Ошибка при edit_message_text: {e}")
+
+            # [ADDED REST BETWEEN EXERCISES] — запускаем короткий отдых
+            await state.set_state(TrainingProcess.circular_rest)
+            await asyncio.create_task(
+                handle_rest_period(message, state, session, circular_rest_between_exercise)
+            )
+            # После отдыха — идём к следующему упражнению
+
+        await state.update_data(circuit_ex_idx=c_idx)
+        next_ex_id = c_ex_ids[c_idx]
+        next_ex = await orm_get_exercise(session, next_ex_id)
+        if not next_ex:
+            await message.answer("Следующее упражнение не найдено.")
+            await move_to_next_block_in_day(message, state, session)
+            return
+        await state.update_data(current_exercise_id=next_ex.id)
+
+        # Выводим инфо о следующем упражнении
+        text = (
+            f"Круг <strong>{c_round} из {circular_rounds}</strong>\n"
+            f"Следующее упражнение: <strong>{next_ex.name}</strong>\n\n"
+            "Введите количество повторений:"
+        )
+        try:
+            await message.bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=bot_msg_id,
+                text=text,
+            )
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                pass
+            else:
+                logging.warning(f"Ошибка при edit_message_text: {e}")
         await state.set_state(TrainingProcess.reps)
+
     else:
-        # Закончились упражнения этого раунда
-        if c_round < CIRCULAR_ROUNDS:
-            # Переходим к следующему раунду
+        # Completed all exercises in the current round
+        if c_round < circular_rounds:
+            # Переход к следующему раунду
             c_round += 1
             await state.update_data(circuit_round=c_round)
-            rest_text = f"Раунд {c_round - 1} завершён! Отдых {CIRCULAR_REST_BETWEEN_ROUNDS} сек..."
-            await message.bot.edit_message_text(
-                chat_id=message.chat.id,
-                message_id=bot_msg_id,
-                text=rest_text
+            rest_text = (
+                f"Круг <strong>{c_round - 1}</strong> завершён! Отдых <strong>{circular_rest_between_rounds // 60}"
+                f"</strong> мин..."
             )
-            await asyncio.sleep(CIRCULAR_REST_BETWEEN_ROUNDS)
+            try:
+                await message.bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=bot_msg_id,
+                    text=rest_text,
+                )
+            except TelegramBadRequest as e:
+                if "message is not modified" in str(e):
+                    pass
+                else:
+                    logging.warning(f"Ошибка при edit_message_text: {e}")
 
-            # Снова идём с 0-го упражнения
-            await state.update_data(circuit_ex_idx=0)
-            first_id = c_ex_ids[0]
-            first_ex = await orm_get_exercise(session, first_id)
-            await state.update_data(current_exercise_id=first_id)
+            # Отдыхаем между раундами
+            await state.set_state(TrainingProcess.circular_rest)
+            await asyncio.create_task(
+                handle_rest_period(message, state, session, circular_rest_between_rounds)
+            )
+            c_idx = 0
+            next_ex_id = c_ex_ids[c_idx]
+            await state.update_data(circuit_ex_idx=c_idx)
+            next_ex = await orm_get_exercise(session, next_ex_id)
+            if not next_ex:
+                await message.answer("Следующее упражнение не найдено.")
+                await move_to_next_block_in_day(message, state, session)
+                return
+            await state.update_data(current_exercise_id=next_ex.id)
 
+            # Выводим инфо о следующем упражнении
             text = (
-                f"Раунд {c_round} из {CIRCULAR_ROUNDS}\n\n"
-                f"{first_ex.name}\n{first_ex.description}\n\n"
-                "Введите кол-во повторений:"
+                f"Круг <strong>{c_round} из {circular_rounds}</strong>\n"
+                f"Следующее упражнение: <strong>{next_ex.name}</strong>\n\n"
+                "Введите количество повторений:"
             )
-            await message.bot.edit_message_text(
-                chat_id=message.chat.id,
-                message_id=bot_msg_id,
-                text=text
-            )
+            try:
+                await message.bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=bot_msg_id,
+                    text=text,
+                )
+            except TelegramBadRequest as e:
+                if "message is not modified" in str(e):
+                    pass
+                else:
+                    logging.warning(f"Ошибка при edit_message_text: {e}")
             await state.set_state(TrainingProcess.reps)
         else:
-            # Все раунды пройдены => двигаемся дальше
+            # All rounds completed
             await move_to_next_block_in_day(message, state, session)
 
 
-###################################################################
-#    ЛОГИКА ПЕРЕХОДА МЕЖДУ БЛОКАМИ
-###################################################################
-
-async def move_to_next_block_in_day(message: types.Message, state: FSMContext, session):
+# ------------------ Handle Rest Period ------------------
+async def handle_rest_period(
+        message: types.Message,
+        state: FSMContext,
+        session: AsyncSession,
+        rest_duration: int
+):
     """
-    Переходим к следующему блоку (увеличиваем block_index). Если блоков больше нет — финиш.
+    Обрабатывает период отдыха:
+    1. Удаляет предыдущее сообщение об отдыхе.
+    2. Отправляет новое сообщение с обновленным временем (дробными снами).
+    3. После завершения отдыха ИЛИ если пользователь завершил отдых досрочно:
+       - удаляет последнее сообщение об отдыхе,
+       - и, если нужно, отправляет "Отдых закончен..." (но не дублирует при досрочном окончании).
+    """
+
+    data = await state.get_data()
+    if "rest_ended" not in data:
+        await state.update_data(rest_ended=False)
+
+    time_left = rest_duration
+    sleep_step = 1  # по желанию - 1, 5, 10 сек
+
+    while time_left > 0:
+        # Проверка досрочного окончания
+        data = await state.get_data()
+        if data.get("rest_ended", False):
+            break
+
+        # Удаляем предыдущее сообщение
+        rest_message_id = data.get("rest_message_id")
+        if rest_message_id:
+            try:
+                await message.bot.delete_message(chat_id=message.chat.id, message_id=rest_message_id)
+            except TelegramBadRequest as e:
+                if "message to delete not found" not in str(e):
+                    logging.warning(f"Не удалось удалить сообщение об отдыхе: {e}")
+
+        # Считаем оставшиеся минуты
+        minutes = time_left // 60
+        if minutes > 1:
+            new_rest_text = f"Отдыхайте еще <strong>{minutes}</strong> мин..."
+        elif minutes == 1:
+            new_rest_text = "Отдыхайте еще <strong>1</strong> минуту..."
+        else:
+            new_rest_text = "Отдых завершен!"
+        # Отправляем новое сообщение
+        try:
+            rest_msg = await message.answer(new_rest_text, reply_markup=get_keyboard("🏄‍♂️ Закончить отдых"))
+            await state.update_data(rest_message_id=rest_msg.message_id)
+        except TelegramBadRequest as e:
+            logging.warning(f"Ошибка при отправке rest-сообщения: {e}")
+
+        # Дробно спим, максимум 60 секунд за "итерацию"
+        chunk = min(60, time_left)
+        slept = 0
+        while slept < chunk:
+            await asyncio.sleep(sleep_step)
+            slept += sleep_step
+            data = await state.get_data()
+            if data.get("rest_ended", False):
+                break
+
+        if data.get("rest_ended", False):
+            break
+
+        time_left -= chunk
+
+    # Удаляем последнее сообщение
+    data = await state.get_data()
+    await state.update_data(rest_ended=False)
+    rest_message_id = data.get("rest_message_id")
+    if rest_message_id:
+        try:
+            await message.bot.delete_message(chat_id=message.chat.id, message_id=rest_message_id)
+        except TelegramBadRequest as e:
+            if "message to delete not found" not in str(e):
+                logging.warning(f"Не удалось удалить последнее сообщение об отдыхе: {e}")
+
+    if data.get("rest_ended", False):
+        return
+    end_rest_message = await message.answer("Отдых завершен!\n\nАвтоудаление через 5 секунд")
+    await asyncio.sleep(5)
+    if end_rest_message:
+        try:
+            await end_rest_message.delete()
+        except TelegramBadRequest as e:
+            if "message to delete not found" not in str(e):
+                logging.warning(f"Не удалось удалить последнее сообщение об отдыхе: {e}")
+
+
+# ------------------ Handle Rest Messages ------------------
+@user_private_router.message(StateFilter(TrainingProcess.rest.state, TrainingProcess.circular_rest.state))
+async def handle_rest_messages(message: types.Message, state: FSMContext, session: AsyncSession):
+    """
+    Handles user messages during the rest period.
+    Informs the user that the bot is currently resting.
+    """
+    if message.text == "🏄‍♂️ Закончить отдых":
+        await state.update_data(rest_ended=True)
+        data = await state.get_data()
+        rest_message_id = data.get("rest_message_id")
+        if rest_message_id:
+            try:
+                await message.bot.delete_message(chat_id=message.chat.id, message_id=rest_message_id)
+            except TelegramBadRequest as e:
+                if "message to delete not found" not in str(e):
+                    logging.warning(f"Не удалось удалить последнее сообщение об отдыхе: {e}")
+
+        end_message = await message.answer(
+            "Отдых закончен!\n\nАвтоудаление через 5 секунд",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        await asyncio.sleep(5)
+        await message.delete()
+        await end_message.delete()
+        await state.update_data(rest_ended=False)
+
+    else:
+        message_rest = await message.reply(
+            "Пожалуйста, дождитесь окончания отдыха.\n\nАвтоудаление сообщения через 5 секунд..."
+        )
+        await asyncio.sleep(5)
+        try:
+            await message.delete()
+        except:
+            pass
+        try:
+            await message_rest.delete()
+        except:
+            pass
+
+
+# ------------------ Moving to Next Block ------------------
+async def move_to_next_block_in_day(
+        message: types.Message, state: FSMContext, session: AsyncSession
+):
+    """
+    Advances to the next exercise block or finishes training if all blocks are done.
     """
     data = await state.get_data()
-    blocks_data = data['blocks']
-    block_index = data['block_index']
-    block_index += 1
+    blocks = data.get("blocks", [])
+    block_index = data.get("block_index", 0) + 1
     await state.update_data(block_index=block_index)
 
-    if block_index >= len(blocks_data):
-        # Все блоки пройдены
+    if block_index >= len(blocks):
+        # All blocks completed
         await finish_training(message, state, session)
     else:
-        # Продолжаем: процесс текущего блока
+        # Continue with the next block
         await process_current_block(message, state, session)
 
 
-###################################################################
-#    ФИНАЛ ТРЕНИРОВКИ + ВЫВОД РЕЗУЛЬТАТОВ
-###################################################################
-
-async def finish_training(message: types.Message, state: FSMContext, session):
+# ------------------ Finishing Training ------------------
+async def finish_training(
+        message: types.Message, state: FSMContext, session: AsyncSession
+):
     """
-    Завершаем тренировку:
-    1) Удаляем служебное сообщение
-    2) Для всех упражнений из training_day_id достаём подходы (Sets),
-       привязанные к training_session_id
-    3) Выводим отчёт
-    4) Сбрасываем состояние
+    Finalizes the training session by compiling results and clearing the state.
     """
     data = await state.get_data()
     training_day_id = data.get("training_day_id")
     training_session_id = data.get("training_session_id")
     bot_msg_id = data.get("bot_message_id")
 
-    # Удаляем служебное сообщение
+    # Delete the preparatory message
     if bot_msg_id:
         try:
             await message.bot.delete_message(chat_id=message.chat.id, message_id=bot_msg_id)
-        except:
-            pass
+        except TelegramBadRequest as e:
+            if "message to delete not found" in str(e):
+                pass
+            else:
+                logging.warning(f"Failed to delete bot message: {e}")
 
-    # Формируем итоговый отчёт
-    all_exs = await orm_get_exercises(session, training_day_id)
+    # Compile the training report
+    all_exercises = await orm_get_exercises(session, training_day_id)
     result_message = "Тренировка завершена! Отличная работа!\n\nВаши результаты:\n"
-    for ex in all_exs:
-        result_message += f"\nУпражнение: {ex.name}\n"
+    for ex in all_exercises:
+        result_message += f"\n\n👉Упражнение: {ex.name}"
         sets = await orm_get_sets_by_session(session, ex.id, training_session_id)
         if sets:
             for idx, s in enumerate(sets, start=1):
-                result_message += f"  Подход {idx}: {s.repetitions} повторений с весом {s.weight} кг\n"
+                f"\nПодход <strong>{idx}</strong>: "
+                f"{s.repetitions} повтор., вес: <strong>{s.weight}</strong> кг/блок"
         else:
             result_message += "  Нет данных о подходах.\n"
 
-    # Отправляем сообщение
     bot_msg = await message.answer(result_message)
     await state.clear()
     await state.update_data(bot_message_id=bot_msg.message_id)
 
 
-###################################################################
-#    ОБРАБОТЧИКИ ВВОДА ПОВТОРЕНИЙ/ВЕСА
-###################################################################
-
+# ------------------ Processing Reps Input ------------------
 @user_private_router.message(TrainingProcess.reps)
-async def process_reps_input(message: types.Message, state: FSMContext):
+async def process_reps_input(
+        message: types.Message, state: FSMContext, session: AsyncSession
+):
     """
-    Состояние TrainingProcess.reps:
-    Пользователь вводит количество повторений.
+    Handles user input for repetitions in an exercise.
     """
     try:
         reps = int(message.text)
         if reps <= 0:
-            raise ValueError
+            raise ValueError("Reps must be positive.")
     except ValueError:
         await message.reply("Ошибка: введите положительное целое число повторений.")
         return
 
-    # Удаляем сообщение пользователя из чата
     try:
         await message.delete()
     except:
@@ -1192,54 +1554,67 @@ async def process_reps_input(message: types.Message, state: FSMContext):
     data = await state.get_data()
     bot_msg_id = data.get("bot_message_id")
 
-    await message.bot.edit_message_text(
-        chat_id=message.chat.id,
-        message_id=bot_msg_id,
-        text="Введите вес снаряда (в кг):"
-    )
+    # Спрашиваем вес
+    try:
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=bot_msg_id,
+            text="Введите вес снаряда (в кг):",
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            pass
+        else:
+            logging.warning(f"Ошибка при edit_message_text: {e}")
+
     await state.set_state(TrainingProcess.weight)
 
 
-@user_private_router.message(TrainingProcess.weight)
-async def process_weight_input(message: types.Message, state: FSMContext, session):
+# ------------------ Processing Weight Input ------------------
+@user_private_router.message(TrainingProcess.weight, F.text)
+async def process_weight_input(
+        message: types.Message, state: FSMContext, session: AsyncSession
+):
     """
-    Состояние TrainingProcess.weight:
-    Пользователь вводит вес.
-    Сохраняем подход в БД (Set).
+    Handles user input for weight in an exercise set.
+    Saves the set data to the database.
     """
     try:
-        weight = float(message.text.replace(',', '.'))
+        weight = float(message.text.replace(",", "."))
         if weight < 0:
-            raise ValueError
+            raise ValueError("Weight cannot be negative.")
     except ValueError:
         await message.reply("Ошибка: вес >= 0.")
         return
 
-    # Удаляем сообщение пользователя из чата
     try:
         await message.delete()
     except:
         pass
 
     data = await state.get_data()
-    reps = data['reps']
-    ex_id = data['current_exercise_id']
-    training_session_id = data['training_session_id']
+    reps = data.get("reps")
+    ex_id = data.get("current_exercise_id")
+    training_session_id = data.get("training_session_id")
 
-    # Записываем подход в БД
-    set_data = {
-        'exercise_id': ex_id,
-        'weight': weight,
-        'repetitions': reps,
-        'training_session_id': training_session_id
-    }
-    await orm_add_set(session, set_data)
+    try:
+        # Save the set to the database
+        set_data = {
+            "exercise_id": ex_id,
+            "weight": weight,
+            "repetitions": reps,
+            "training_session_id": training_session_id,
+        }
+        await orm_add_set(session, set_data)
 
-    # Проверяем, это блок standard или circuit
-    if data.get('standard_ex_ids'):
-        await process_standard_after_set(message, state, session)
-    elif data.get('circuit_ex_ids'):
-        await process_circuit_after_set(message, state, session)
-    else:
-        await message.answer("Ошибка: не найдено ни standard_ex_ids, ни circuit_ex_ids.")
+        # Determine the type of block and proceed accordingly
+        if data.get("standard_ex_ids"):
+            await process_standard_after_set(message, state, session)
+        elif data.get("circuit_ex_ids"):
+            await process_circuit_after_set(message, state, session)
+        else:
+            await message.answer("Ошибка: не найдено ни standard_ex_ids, ни circuit_ex_ids.")
+            await state.clear()
+    except Exception as e:
+        await send_error_message(message, e)
         await state.clear()
