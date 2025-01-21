@@ -1515,7 +1515,7 @@ async def finish_training(
     all_exercises = await orm_get_exercises(session, training_day_id)
     result_message = "Тренировка завершена! Отличная работа!\n\nВаши результаты:\n"
     for ex in all_exercises:
-        result_message += f"\n\n👉Упражнение: {ex.name}"
+        result_message += f"\n\n👉<strong>Упражнение</strong>: {ex.name}"
         sets = await orm_get_sets_by_session(session, ex.id, training_session_id)
         if sets:
             for idx, s in enumerate(sets, start=1):
