@@ -272,7 +272,8 @@ async def show_result(session: AsyncSession, level: int, page: int, session_page
                         for s_i, s in enumerate(sets_for_ex, start=1):
                             result_message += (
                                 f"\nПодход <strong>{s_i}</strong>: "
-                                f"{s.repetitions} повтор., вес: <strong>{s.weight}</strong> кг/блок"
+                                f"<strong>{s.repetitions}</strong> повтор.,"
+                                f" вес: <strong>{s.weight}</strong> кг/блок"
                             )
                     else:
                         result_message += "\n   Нет данных о подходах."

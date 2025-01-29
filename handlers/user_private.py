@@ -84,7 +84,11 @@ class TrainingProcess(StatesGroup):
     exercise_index = State()
     set_index = State()
     reps = State()
+    change_reps = State()
     weight = State()
+    change_weight = State()
+    accept_results = State()
+    choose_change = State()
 
     # Для круговой тренировки
     circular_current_round = State()
@@ -918,6 +922,7 @@ async def handle_start_training_process(
             rest_between_set=rest_between_set,
             circular_rest_between_rounds=circular_rest_between_rounds,
             circular_rest_between_exercise=circular_rest_between_exercise,
+            rest_ended=False,
         )
 
         # Retrieve exercises for the training day
@@ -1417,7 +1422,8 @@ async def handle_rest_period(
 
     if data.get("rest_ended", False):
         return
-    end_rest_message = await message.answer("Отдых завершен!\n\nАвтоудаление через 5 секунд")
+    end_rest_message = await message.answer("Отдых завершен!\n\nАвтоудаление через 5 секунд",
+                                            reply_markup=ReplyKeyboardRemove())
     await asyncio.sleep(5)
     if end_rest_message:
         try:
@@ -1449,8 +1455,8 @@ async def handle_rest_messages(message: types.Message, state: FSMContext, sessio
             "Отдых закончен!\n\nАвтоудаление через 5 секунд",
             reply_markup=ReplyKeyboardRemove()
         )
-        await asyncio.sleep(5)
         await message.delete()
+        await asyncio.sleep(5)
         await end_message.delete()
         await state.update_data(rest_ended=False)
 
@@ -1515,15 +1521,17 @@ async def finish_training(
     all_exercises = await orm_get_exercises(session, training_day_id)
     result_message = "Тренировка завершена! Отличная работа!\n\nВаши результаты:\n"
     for ex in all_exercises:
-        result_message += f"\n\n👉<strong>Упражнение</strong>: {ex.name}"
+        result_message += f"\n👉<strong>Упражнение</strong>: {ex.name}"
         sets = await orm_get_sets_by_session(session, ex.id, training_session_id)
         if sets:
-            for idx, s in enumerate(sets, start=1):
-                f"\nПодход <strong>{idx}</strong>: "
-                f"{s.repetitions} повтор., вес: <strong>{s.weight}</strong> кг/блок"
+            for s_i, s in enumerate(sets, start=1):
+                result_message += (
+                    f"\nПодход <strong>{s_i}</strong>: "
+                    f"<strong>{s.repetitions}</strong> повтор., вес: <strong>{s.weight}</strong> кг/блок"
+                )
         else:
-            result_message += "  Нет данных о подходах.\n"
-
+            result_message += "\n   Нет данных о подходах."
+    result_message += "\n\nДля завершения тренировки нажмите на кнопку в главном сообщении 👆"
     bot_msg = await message.answer(result_message)
     await state.clear()
     await state.update_data(bot_message_id=bot_msg.message_id)
@@ -1559,7 +1567,7 @@ async def process_reps_input(
         await message.bot.edit_message_text(
             chat_id=message.chat.id,
             message_id=bot_msg_id,
-            text="Введите вес снаряда (в кг):",
+            text="Введите вес снаряда (в кг или блоках):",
         )
     except TelegramBadRequest as e:
         if "message is not modified" in str(e):
@@ -1584,7 +1592,10 @@ async def process_weight_input(
         if weight < 0:
             raise ValueError("Weight cannot be negative.")
     except ValueError:
-        await message.reply("Ошибка: вес >= 0.")
+        error_message = await message.reply("Ошибка: вес >= 0.")
+        await asyncio.sleep(3)
+        await message.delete()
+        await error_message.delete()
         return
 
     try:
@@ -1595,26 +1606,175 @@ async def process_weight_input(
     data = await state.get_data()
     reps = data.get("reps")
     ex_id = data.get("current_exercise_id")
-    training_session_id = data.get("training_session_id")
+    bot_msg_id = data.get("bot_message_id")
+    await state.update_data(weight=weight)
+    user_exercise = await orm_get_exercise(session, ex_id)
 
     try:
-        # Save the set to the database
-        set_data = {
-            "exercise_id": ex_id,
-            "weight": weight,
-            "repetitions": reps,
-            "training_session_id": training_session_id,
-        }
-        await orm_add_set(session, set_data)
-
-        # Determine the type of block and proceed accordingly
-        if data.get("standard_ex_ids"):
-            await process_standard_after_set(message, state, session)
-        elif data.get("circuit_ex_ids"):
-            await process_circuit_after_set(message, state, session)
+        await message.bot.edit_message_text(
+            chat_id=message.chat.id,
+            message_id=bot_msg_id,
+            text="Ожидание ввода пользователя...",
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            pass
         else:
-            await message.answer("Ошибка: не найдено ни standard_ex_ids, ни circuit_ex_ids.")
+            logging.warning(f"Ошибка при edit_message_text: {e}")
+    accept_message = await message.answer(f"<strong>{user_exercise.name}</strong>\n\n"
+                                          f"Результат:\nПовторения: <strong>{reps}</strong>; "
+                                          f"Вес: <strong>{weight}</strong> кг/блок\n\n",
+                                          reply_markup=get_keyboard("✏️ Изменить",
+                                                                    "✅ Продолжить тренировку"))
+    await state.update_data(accept_message_id=accept_message.message_id)
+    await state.set_state(TrainingProcess.accept_results)
+
+
+@user_private_router.message(TrainingProcess.accept_results)
+async def accept_results(message: types.Message, state: FSMContext, session: AsyncSession):
+    if message.text == "✅ Продолжить тренировку":
+
+        data = await state.get_data()
+        reps = data.get("reps")
+        ex_id = data.get("current_exercise_id")
+        training_session_id = data.get("training_session_id")
+
+        try:
+            # Save the set to the database
+            set_data = {
+                "exercise_id": ex_id,
+                "weight": data["weight"],
+                "repetitions": reps,
+                "training_session_id": training_session_id,
+            }
+            await orm_add_set(session, set_data)
+            await message.bot.delete_message(message.chat.id, data["accept_message_id"])
+            await message.delete()
+            # Determine the type of block and proceed accordingly
+            if data.get("standard_ex_ids"):
+                await process_standard_after_set(message, state, session)
+            elif data.get("circuit_ex_ids"):
+                await process_circuit_after_set(message, state, session)
+            else:
+                await message.answer("Ошибка: не найдено ни standard_ex_ids, ни circuit_ex_ids.")
+                await state.clear()
+        except Exception as e:
+            await send_error_message(message, e)
             await state.clear()
-    except Exception as e:
-        await send_error_message(message, e)
-        await state.clear()
+    elif message.text == "✏️ Изменить":
+
+        choose_message = await message.answer("Выберите что нужно изменить:",
+                                              reply_markup=get_keyboard("🔢 Повторения",
+                                                                        "🏋 Вес",
+                                                                        placeholder="Что нужно изменить?"))
+        await message.delete()
+        await state.update_data(choose_message_id=choose_message.message_id)
+        await state.set_state(TrainingProcess.choose_change)
+
+
+@user_private_router.message(TrainingProcess.choose_change)
+async def choose_change(message: types.Message, state: FSMContext):
+    await message.delete()
+    data = await state.get_data()
+    choose_message_id = data.get("choose_message_id")
+    await message.bot.delete_message(chat_id=message.chat.id,
+                                     message_id=choose_message_id)
+
+    if message.text == "🔢 Повторения":
+        try:
+
+            enter_message = await message.answer("Введите кол-во повторений:", reply_markup=ReplyKeyboardRemove())
+            await state.update_data(enter_message_id=enter_message.message_id)
+
+        except TelegramBadRequest as e:
+            logging.warning(f"Ошибка при редактировании сообщения: {e}")
+
+        await state.set_state(TrainingProcess.change_reps)
+    elif message.text == "🏋 Вес":
+        await state.set_state(TrainingProcess.change_weight)
+        try:
+
+            enter_message = await message.answer("Введите вес снаряда (в кг или блоках):",
+                                                 reply_markup=ReplyKeyboardRemove())
+            await state.update_data(enter_message_id=enter_message.message_id)
+
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                pass
+            else:
+                logging.warning(f"Ошибка при edit_message_text: {e}")
+
+
+@user_private_router.message(TrainingProcess.change_reps)
+async def process_change_reps_input(
+        message: types.Message, state: FSMContext, session: AsyncSession):
+    try:
+        reps = int(message.text)
+        if reps <= 0:
+            raise ValueError("Reps must be positive.")
+    except ValueError:
+        await message.reply("Ошибка: введите положительное целое число повторений.")
+        return
+
+    try:
+        await message.delete()
+    except:
+        pass
+
+    await state.update_data(reps=reps)
+    data = await state.get_data()
+    accept_message_id = data.get("accept_message_id")
+    reps = data.get("reps")
+    weight = data.get("weight")
+    ex_id = data.get("current_exercise_id")
+    enter_message_id = data.get("enter_message_id")
+    user_exercise = await orm_get_exercise(session, ex_id)
+
+    await message.bot.delete_message(chat_id=message.chat.id, message_id=enter_message_id)
+    await message.bot.delete_message(chat_id=message.chat.id, message_id=accept_message_id)
+    accept_message = await message.answer(f"<strong>{user_exercise.name}</strong>\n\n"
+                                          f"Результат:\nПовторения: <strong>{reps}</strong>; "
+                                          f"Вес: <strong>{weight}</strong> кг/блок\n\n",
+                                          reply_markup=get_keyboard("✏️ Изменить",
+                                                                    "✅ Продолжить тренировку"))
+    await state.update_data(accept_message_id=accept_message.message_id)
+    await state.set_state(TrainingProcess.accept_results)
+
+
+@user_private_router.message(TrainingProcess.change_weight)
+async def process_change_weight_input(
+        message: types.Message, state: FSMContext, session: AsyncSession):
+    try:
+        weight = float(message.text.replace(",", "."))
+        if weight < 0:
+            raise ValueError("Weight cannot be negative.")
+    except ValueError:
+        error_message = await message.reply("Ошибка: вес >= 0.")
+        await asyncio.sleep(3)
+        await message.delete()
+        await error_message.delete()
+        return
+
+    try:
+        await message.delete()
+    except:
+        pass
+
+    await state.update_data(weight=weight)
+    data = await state.get_data()
+    accept_message_id = data.get("accept_message_id")
+    reps = data.get("reps")
+    weight = data.get("weight")
+    ex_id = data.get("current_exercise_id")
+    enter_message_id = data.get("enter_message_id")
+    user_exercise = await orm_get_exercise(session, ex_id)
+
+    await message.bot.delete_message(chat_id=message.chat.id, message_id=enter_message_id)
+    await message.bot.delete_message(chat_id=message.chat.id, message_id=accept_message_id)
+    accept_message = await message.answer(f"<strong>{user_exercise.name}</strong>\n\n"
+                                          f"Результат:\nПовторения: <strong>{reps}</strong>; "
+                                          f"Вес: <strong>{weight}</strong> кг/блок\n\n",
+                                          reply_markup=get_keyboard("✏️ Изменить",
+                                                                    "✅ Продолжить тренировку"))
+    await state.update_data(accept_message_id=accept_message.message_id)
+    await state.set_state(TrainingProcess.accept_results)
