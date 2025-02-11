@@ -175,7 +175,7 @@ def get_sessions_results_btns(
     # Кнопки пагинации (prev / next)
     row = []
     for text, act in pagination_btns.items():
-        new_page = page + 1 if act.startswith("next") else page - 1
+        new_page = page + 1 if act.startswith("n") else page - 1
         row.append(
             InlineKeyboardButton(
                 text=text,

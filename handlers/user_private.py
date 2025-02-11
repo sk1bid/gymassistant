@@ -1051,7 +1051,7 @@ async def start_standard_block(
     current_ex = ex_objs[0]
     text = (
         f"Упражнение: <strong>{current_ex.name}</strong>\n\n"
-        f"Подход <strong>1 из {current_ex.base_sets}</strong>\nВведите количество повторений:"
+        f"Подход <strong>1 из {current_ex.base_sets}</strong> \nВведите количество повторений:"
     )
 
     try:
