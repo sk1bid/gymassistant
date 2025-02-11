@@ -746,7 +746,7 @@ async def exercise_settings(session: AsyncSession, level: int, exercise_id: int,
 
         kbds = get_exercise_settings_btns(level=level, action=action, program_id=training_program_id,
                                           page=page, exercise_id=exercise_id,
-                                          training_day_id=training_day_id, user_exercise=user_exercise,
+                                          training_day_id=training_day_id, user_exercise=user_exercise.name,
                                           base_ex_sets=base_ex_sets)
 
         return user_image, kbds

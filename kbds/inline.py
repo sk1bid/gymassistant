@@ -1534,7 +1534,7 @@ def get_exercise_settings_btns(
         level: int,
         action: str,
         program_id: int,
-        user_exercise: list,
+        user_exercise: str,
         base_ex_sets: list,
         page: int,
         exercise_id: int | None,
@@ -1551,7 +1551,7 @@ def get_exercise_settings_btns(
                                   training_day_id=training_day_id,
                                   program_id=program_id).pack()
     exercise_button = InlineKeyboardButton(
-        text=f"🔘 {user_exercise.name}",
+        text=f"🔘 {user_exercise}",
         callback_data=empty_callback)
     keyboard.row(exercise_button)
 
