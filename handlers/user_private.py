@@ -44,7 +44,7 @@ from database.orm_query import (
     orm_get_categories,
     orm_delete_user_exercise,
     orm_add_training_session,
-    orm_get_program,
+    orm_get_program, orm_get_sets,
 )
 
 # Ваши функции для меню/кнопок
@@ -1049,8 +1049,21 @@ async def start_standard_block(
         return
 
     current_ex = ex_objs[0]
+    # Получаем список подходов для упражнения
+    set_list = await orm_get_sets(session, current_ex.id)
+    last_3_sets = set_list[-3:]
+    prev_sets = ""
+    if last_3_sets:
+        for prev_set in last_3_sets:
+            prev_sets += (f"<strong>{prev_set.updated.strftime("%d-%m")}"
+                          f" 🦾: {prev_set.weight} кг/блок,"
+                          f" 🧮: {prev_set.repetitions} повтр.\n</strong>")
+
+    if prev_sets == "":
+        prev_sets = "Результаты не обнаружены"
+
     text = (
-        f"Упражнение: <strong>{current_ex.name}</strong>\n\n"
+        f"Упражнение: <strong>{current_ex.name}</strong>\n\nРезультаты предыдущей тренировки:\n{prev_sets}\n"
         f"Подход <strong>1 из {current_ex.base_sets}</strong> \nВведите количество повторений:"
     )
 
@@ -1066,7 +1079,8 @@ async def start_standard_block(
         else:
             logging.warning(f"Ошибка при edit_message_text: {e}")
 
-    await state.update_data(current_exercise_id=current_ex.id)
+    current_sets = {"weight": [], "repetitions": []}
+    await state.update_data(current_exercise_id=current_ex.id, current_sets=current_sets)
     await state.set_state(TrainingProcess.reps)
 
 
@@ -1115,9 +1129,41 @@ async def process_standard_after_set(
         await asyncio.create_task(
             handle_rest_period(message, state, session, rest_between_set))
 
+        # Получаем список подходов для упражнения
+        set_list = await orm_get_sets(session, ex_obj.id)
+        last_3_sets = set_list[-3 - (set_index - 1):-(set_index - 1)]
+        current_sets = set_list[-(set_index - 1):]
+        prev_sets = ""
+        if last_3_sets:
+
+            for i, prev_set in enumerate(last_3_sets):
+                prev_sets += (f"{prev_set.updated.strftime("%d-%m")}"
+                              f" 🦾: {prev_set.weight} кг/блок,"
+                              f" 🧮: {prev_set.repetitions} повтр.\n")
+                if len(current_sets) > i:
+                    if current_sets[i].weight > prev_set.weight:
+                        weight_factor = f"💹+{current_sets[i].weight - prev_set.weight}"
+                    elif current_sets[i].weight == prev_set.weight:
+                        weight_factor = "👌"
+                    else:
+                        weight_factor = f"📉{current_sets[i].weight - prev_set.weight}"
+
+                    if current_sets[i].repetitions > prev_set.repetitions:
+                        reps_factor = f"💹+{current_sets[i].repetitions - prev_set.repetitions}"
+                    elif current_sets[i].repetitions == prev_set.repetitions:
+                        reps_factor = "👌"
+                    else:
+                        reps_factor = f"📉{current_sets[i].repetitions - prev_set.repetitions}"
+                    prev_sets += (f"<strong>Подход {i + 1} 👇\n"
+                                  f"🦾: {current_sets[i].weight} кг/блок {weight_factor}\n"
+                                  f"🧮: {current_sets[i].repetitions} повтр. {reps_factor}\n\n</strong>")
+
+        if prev_sets == "":
+            prev_sets = "Результаты не обнаружены"
+
         text = (
-            f"Упражнение: <strong>{ex_obj.name}</strong>\n\n"
-            f"Подход <strong>{set_index} из {ex_obj.base_sets}</strong>\nВведите количество повторений:"
+            f"Упражнение: <strong>{ex_obj.name}</strong>\n\nРезультаты прошлой тренировки:\n{prev_sets}\n"
+            f"Подход <strong>{set_index} из {ex_obj.base_sets}</strong> \nВведите количество повторений:"
         )
 
         try:
@@ -1145,9 +1191,22 @@ async def process_standard_after_set(
                 await move_to_next_block_in_day(message, state, session)
                 return
             await state.update_data(current_exercise_id=next_ex.id)
+            set_list = await orm_get_sets(session, next_ex.id)
+            last_3_sets = set_list[-3:]
+            prev_sets = ""
+            if last_3_sets:
+                for prev_set in last_3_sets:
+                    prev_sets += (f"<strong>{prev_set.updated.strftime("%d-%m")}"
+                                  f" 🦾: {prev_set.weight} кг/блок,"
+                                  f" 🧮: {prev_set.repetitions} раз\n</strong>")
+
+            if prev_sets == "":
+                prev_sets = "Результаты не обнаружены"
+
             text = (
                 f"Следующее упражнение: <strong>{next_ex.name}</strong>\n\n"
-                f"Подход 1 из {next_ex.base_sets}\nВведите количество повторений:"
+                f"Результаты предыдущей тренировки:\n{prev_sets}\n"
+                f"Подход <strong>1 из {next_ex.base_sets}</strong> \nВведите количество повторений:"
             )
 
             try:
@@ -1185,10 +1244,23 @@ async def start_circuit_block(
         return
 
     current_ex = ex_objs[0]
+    set_list = await orm_get_sets(session, current_ex.id)
+    last_3_sets = set_list[-3:]
+    prev_sets = ""
+    if last_3_sets:
+        for prev_set in last_3_sets:
+            prev_sets += (f"<strong>{prev_set.updated.strftime("%d-%m")}"
+                          f" 🦾: {prev_set.weight} кг/блок,"
+                          f" 🧮: {prev_set.repetitions} повтр.\n</strong>")
+
+    if prev_sets == "":
+        prev_sets = "Результаты не обнаружены"
+
     text = (
         f"Блок круговых упражнений\n\n"
         f"Круг <strong>1 из {circular_rounds}</strong>\n\n"
         f"Упражнение: <strong>{current_ex.name}</strong>\n\n"
+        f"Результаты предыдущей тренировки:\n{prev_sets}\n"
         "Введите количество повторений:"
     )
 
@@ -1260,12 +1332,23 @@ async def process_circuit_after_set(
             await message.answer("Следующее упражнение не найдено.")
             await move_to_next_block_in_day(message, state, session)
             return
-        await state.update_data(current_exercise_id=next_ex.id)
+        await state.update_data(current_exercise_id=next_ex_id)
+        set_list = await orm_get_sets(session, next_ex.id)
+        last_3_sets = set_list[-3:]
+        prev_sets = ""
+        if last_3_sets:
+            for prev_set in last_3_sets:
+                prev_sets += (f"<strong>{prev_set.updated.strftime("%d-%m")}"
+                              f" 🦾: {prev_set.weight} кг/блок,"
+                              f" 🧮: {prev_set.repetitions} повтр.\n</strong>")
 
+        if prev_sets == "":
+            prev_sets = "Результаты не обнаружены"
         # Выводим инфо о следующем упражнении
         text = (
             f"Круг <strong>{c_round} из {circular_rounds}</strong>\n"
-            f"Следующее упражнение: <strong>{next_ex.name}</strong>\n\n"
+            f"Следующее упражнение: <strong>{next_ex.name}</strong>\n"
+            f"Предыдущие результаты:\n{prev_sets}\n"
             "Введите количество повторений:"
         )
         try:
@@ -1318,10 +1401,22 @@ async def process_circuit_after_set(
                 return
             await state.update_data(current_exercise_id=next_ex.id)
 
+            set_list = await orm_get_sets(session, next_ex.id)
+            last_3_sets = set_list[-3:]
+            prev_sets = ""
+            if last_3_sets:
+                for prev_set in last_3_sets:
+                    prev_sets += (f"<strong>{prev_set.updated.strftime("%d-%m")}"
+                                  f" 🦾: {prev_set.weight} кг/блок,"
+                                  f" 🧮: {prev_set.repetitions} повтр.\n</strong>")
+
+            if prev_sets == "":
+                prev_sets = "Результаты не обнаружены"
             # Выводим инфо о следующем упражнении
             text = (
                 f"Круг <strong>{c_round} из {circular_rounds}</strong>\n"
-                f"Следующее упражнение: <strong>{next_ex.name}</strong>\n\n"
+                f"Следующее упражнение: <strong>{next_ex.name}</strong>\n"
+                f"Предыдущие результаты:\n{prev_sets}\n"
                 "Введите количество повторений:"
             )
             try:
@@ -1550,7 +1645,10 @@ async def process_reps_input(
         if reps <= 0:
             raise ValueError("Reps must be positive.")
     except ValueError:
-        await message.reply("Ошибка: введите положительное целое число повторений.")
+        error_message = await message.reply("Ошибка: введите положительное целое число повторений")
+        await asyncio.sleep(3)
+        await message.delete()
+        await error_message.delete()
         return
 
     try:
@@ -1621,6 +1719,7 @@ async def process_weight_input(
             pass
         else:
             logging.warning(f"Ошибка при edit_message_text: {e}")
+
     accept_message = await message.answer(f"<strong>{user_exercise.name}</strong>\n\n"
                                           f"Результат:\nПовторения: <strong>{reps}</strong>; "
                                           f"Вес: <strong>{weight}</strong> кг/блок\n\n",
@@ -1713,7 +1812,10 @@ async def process_change_reps_input(
         if reps <= 0:
             raise ValueError("Reps must be positive.")
     except ValueError:
-        await message.reply("Ошибка: введите положительное целое число повторений.")
+        error_message = await message.reply("Ошибка: введите положительное целое число повторений")
+        await asyncio.sleep(3)
+        await message.delete()
+        await error_message.delete()
         return
 
     try:
