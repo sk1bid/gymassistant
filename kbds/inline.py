@@ -1546,13 +1546,9 @@ def get_exercise_settings_btns(
     - Кнопка возвращения назад
     """
     keyboard = InlineKeyboardBuilder()
-    empty_callback = MenuCallBack(level=level, action=action, exercise_id=exercise_id,
-                                  page=page,
-                                  training_day_id=training_day_id,
-                                  program_id=program_id).pack()
     exercise_button = InlineKeyboardButton(
         text=f"🔘 {user_exercise}",
-        callback_data=empty_callback)
+        callback_data=EMPTY_CALLBACK)
     keyboard.row(exercise_button)
 
     set_increase_1 = incr_reduce_sets_reps(level, page, action, exercise_id, training_day_id, program_id,
@@ -1585,10 +1581,10 @@ def get_exercise_settings_btns(
     for index, exercise_set in enumerate(base_ex_sets, 1):
         reps_button = InlineKeyboardButton(
             text=f"Reps: {exercise_set.reps}",
-            callback_data=empty_callback)
+            callback_data=EMPTY_CALLBACK)
         sets_button = InlineKeyboardButton(
             text=f"Подход {index}",
-            callback_data=empty_callback)
+            callback_data=EMPTY_CALLBACK)
 
         rep_increase_1 = incr_reduce_sets_reps(level, page, action, exercise_id, training_day_id, program_id,
                                                1, "➕", "reps", exercise_set.id)
@@ -1598,7 +1594,7 @@ def get_exercise_settings_btns(
 
     set_amount = InlineKeyboardButton(
         text=f"Sets: {len(base_ex_sets)}",
-        callback_data=empty_callback)
+        callback_data=EMPTY_CALLBACK)
     keyboard.row(back_button, set_amount, set_reduce_1, set_increase_1)
     return keyboard.as_markup()
 
