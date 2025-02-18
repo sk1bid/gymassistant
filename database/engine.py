@@ -6,7 +6,6 @@ from database.models import Base
 from database.orm_query import orm_add_banner_description, orm_create_categories
 from database.text_for_db import description_for_info_pages, categories
 
-
 engine = create_async_engine(os.getenv('DB_URL'), echo=False)
 
 session_maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)

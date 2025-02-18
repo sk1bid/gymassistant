@@ -1,11 +1,11 @@
-from typing import Any, Awaitable, Callable, Dict
-import time  # Добавляем импорт модуля time
 import logging  # Убедитесь, что модуль logging импортирован и настроен
+import time  # Добавляем импорт модуля time
+from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
-
 from sqlalchemy.ext.asyncio import async_sessionmaker
+
 
 class DataBaseSession(BaseMiddleware):
     def __init__(self, session_pool: async_sessionmaker):

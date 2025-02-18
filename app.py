@@ -1,13 +1,11 @@
 import asyncio
-import os
 import logging
+import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-
 from dotenv import find_dotenv, load_dotenv
-
 
 load_dotenv(find_dotenv())
 

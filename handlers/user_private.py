@@ -1,18 +1,16 @@
 import asyncio
-import time
 import logging
+import time
 from typing import List
 
 from aiogram import F, Router, types
+# Импорт необходимых исключений Aiogram
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, StateFilter, CommandStart, or_f
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-
-from sqlalchemy.ext.asyncio import AsyncSession
-
-# Импорт необходимых исключений Aiogram
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import ReplyKeyboardRemove
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Импорт ORM-функций (обновите пути при необходимости)
 from database.orm_query import (
@@ -46,7 +44,6 @@ from database.orm_query import (
     orm_add_training_session,
     orm_get_program, orm_get_sets,
 )
-
 # Ваши функции для меню/кнопок
 from handlers.menu_processing import get_menu_content
 from kbds.inline import MenuCallBack, get_url_btns, error_btns, get_callback_btns
