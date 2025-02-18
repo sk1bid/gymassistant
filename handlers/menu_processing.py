@@ -1,10 +1,10 @@
 import asyncio
-import time
-from datetime import date
 import logging
-from aiogram.types import InputMediaPhoto
+import time
 from asyncio import gather
+from datetime import date
 
+from aiogram.types import InputMediaPhoto
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,13 +23,11 @@ from database.orm_query import (
     orm_get_categories,
     orm_get_admin_exercises_in_category,
     orm_get_category,
-    orm_add_exercise_set,
     orm_get_exercise_sets,
     orm_turn_on_off_program,
     orm_get_user_exercises_in_category, orm_get_user_exercises, orm_get_user_exercise,
     orm_get_training_sessions_by_user, orm_get_training_session
 )
-
 from kbds.inline import (
     error_btns,
     get_user_programs_list,
@@ -50,7 +48,6 @@ from kbds.inline import (
     get_exercises_result_btns,
 )
 from utils.paginator import Paginator
-
 from utils.separator import get_action_part
 from utils.temporary_storage import retrieve_data_temporarily
 
@@ -649,10 +646,6 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
                     # Добавление упражнения с указанием типа
                     await orm_add_exercise(session, add_data, training_day_id, exercise_type)
                     user_exercises = await orm_get_exercises(session, training_day_id)
-
-                    # Добавление сетов для нового упражнения
-                    for _ in range(user_exercises[-1].base_sets):
-                        await orm_add_exercise_set(session, user_exercises[-1].id, user_exercises[-1].base_reps)
 
         if not empty and category_id:
             caption_text = exercises_in_program(user_exercises, circle_training)
