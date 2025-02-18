@@ -187,6 +187,12 @@ class Exercise(Base):
     user_exercise_id: Mapped[int] = mapped_column(ForeignKey('user_exercises.id', ondelete='CASCADE'), nullable=True)
 
     training_day: Mapped['TrainingDay'] = relationship("TrainingDay", back_populates="exercises", lazy='select')
+    exercise_sets: Mapped[List['ExerciseSet']] = relationship(
+        "ExerciseSet",
+        back_populates="exercise",
+        cascade='all, delete-orphan',
+        lazy='select'
+    )
     sets: Mapped[List['Set']] = relationship("Set", back_populates="exercise", lazy='select')
 
     admin_exercise: Mapped['AdminExercises'] = relationship(
@@ -204,9 +210,22 @@ class Exercise(Base):
     )
 
 
+class ExerciseSet(Base):
+    """
+    Класс, содержащий целевое кол-во повторений, заданное пользователем
+    """
+    __tablename__ = 'exercise_set'
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    reps: Mapped[int] = mapped_column(Integer, CheckConstraint('reps > 0'), nullable=False, default=10)
+    exercise_id: Mapped[int] = mapped_column(ForeignKey('exercise.id', ondelete='CASCADE'), nullable=False)
+
+    exercise: Mapped['Exercise'] = relationship('Exercise', back_populates='exercise_sets', lazy='select')
+
+
 class TrainingSession(Base):
     """
-    Класс уникальной тренировки пользователя
+    Класс тренировки пользователя
     """
     __tablename__ = 'training_session'
 
