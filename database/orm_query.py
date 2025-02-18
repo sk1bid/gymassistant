@@ -1,6 +1,7 @@
-from sqlalchemy import select, update, delete, func, union_all
+from sqlalchemy import select, update, delete, func, union_all, and_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from database.models import (
     User,
     Banner,
@@ -10,14 +11,21 @@ from database.models import (
     Set,
     AdminExercises,
     ExerciseCategory,
-    ExerciseSet,
-    UserExercises
+    UserExercises, TrainingSession
 )
 
+"""
+Работа с изображениями
+"""
 
-############### Работа с баннерами (информационными страницами) ###############
 
 async def orm_add_banner_description(session: AsyncSession, data: dict):
+    """
+    Добавляет в бд названия словарей
+    :param session:
+    :param data: Словарь (название уровня| его описание)
+    :return:
+    """
     for name, description in data.items():
         query = select(Banner).where(Banner.name == name)
         result = await session.execute(query)
@@ -30,26 +38,53 @@ async def orm_add_banner_description(session: AsyncSession, data: dict):
 
 
 async def orm_change_banner_image(session: AsyncSession, name: str, image: str):
+    """
+    Изменяет изображение для определенной страницы
+    :param session:
+    :param name: имя страницы/уровня
+    :param image:
+    :return:
+    """
     query = update(Banner).where(Banner.name == name).values(image=image)
     await session.execute(query)
     await session.commit()
 
 
 async def orm_get_banner(session: AsyncSession, page: str):
+    """
+    Получаем баннер(изображение + описание)
+    :param session:
+    :param page:
+    :return:
+    """
     query = select(Banner).where(Banner.name == page)
     result = await session.execute(query)
     return result.scalar()
 
 
 async def orm_get_info_pages(session: AsyncSession):
+    """
+    Получаем имена баннеров(уровень) для добавления картинок через админ панель
+    :param session:
+    :return:
+    """
     query = select(Banner)
     result = await session.execute(query)
     return result.scalars().all()
 
 
-############################ Программы ######################################
+"""
+Программы тренировок
+"""
+
 
 async def orm_add_program(session: AsyncSession, data: dict):
+    """
+    Добавляем программу тренировок
+    :param session:
+    :param data: название программы и id пользователя(tg_id)
+    :return:
+    """
     obj = TrainingProgram(
         name=data['name'],
         user_id=data['user_id'],
@@ -59,6 +94,13 @@ async def orm_add_program(session: AsyncSession, data: dict):
 
 
 async def orm_update_program(session: AsyncSession, program_id: int, data: dict):
+    """
+    Обновляем созданную программу тренировок
+    :param session:
+    :param program_id:
+    :param data: имя программы тренировок
+    :return:
+    """
     query = (
         update(TrainingProgram)
         .where(TrainingProgram.id == program_id)
@@ -69,26 +111,54 @@ async def orm_update_program(session: AsyncSession, program_id: int, data: dict)
 
 
 async def orm_get_programs(session: AsyncSession, user_id: int):
+    """
+    Получаем все программы пользователя
+    :param session:
+    :param user_id: Telegram ID
+    :return:
+    """
     query = select(TrainingProgram).filter(TrainingProgram.user_id == user_id)
     result = await session.execute(query)
     return result.scalars().all()
 
 
 async def orm_get_program(session: AsyncSession, program_id: int):
+    """
+    Получаем определенную программу пользователя, по id программы
+    :param session:
+    :param program_id:
+    :return:
+    """
     query = select(TrainingProgram).where(TrainingProgram.id == program_id)
     result = await session.execute(query)
     return result.scalar()
 
 
 async def orm_delete_program(session: AsyncSession, program_id: int):
+    """
+    Удаляем программу пользователя
+    :param session:
+    :param program_id:
+    :return:
+    """
     query = delete(TrainingProgram).where(TrainingProgram.id == program_id)
     await session.execute(query)
     await session.commit()
 
 
-############################ Тренировочные дни ######################################
+"""
+Тренировочные дни
+"""
+
 
 async def orm_add_training_day(session: AsyncSession, day_of_week: str, program_id: int):
+    """
+    Добавляем день недели
+    :param session:
+    :param day_of_week: строковое значение дня недели (Понедельник, Вт, ...)
+    :param program_id:
+    :return:
+    """
     obj = TrainingDay(
         training_program_id=program_id,
         day_of_week=day_of_week,
@@ -98,35 +168,55 @@ async def orm_add_training_day(session: AsyncSession, day_of_week: str, program_
 
 
 async def orm_get_training_day(session: AsyncSession, training_day_id: int):
+    """
+    Получаем день недели по его id
+    :param session:
+    :param training_day_id:
+    :return:
+    """
     query = select(TrainingDay).where(TrainingDay.id == training_day_id)
     result = await session.execute(query)
     return result.scalar()
 
 
 async def orm_get_training_days(session: AsyncSession, training_program_id: int):
+    """
+    Получаем все дни пользователя
+    :param session:
+    :param training_program_id:
+    :return:
+    """
     query = select(TrainingDay).filter(TrainingDay.training_program_id == training_program_id)
     result = await session.execute(query)
     return result.scalars().all()
 
 
 async def orm_delete_training_day(session: AsyncSession, training_day_id: int):
+    """
+    Удаляем тренировочный день
+    :param session:
+    :param training_day_id:
+    :return:
+    """
     query = delete(TrainingDay).where(TrainingDay.id == training_day_id)
     await session.execute(query)
     await session.commit()
 
 
-############################ Упражнения ######################################
+"""
+Упражнения
+"""
+
 
 async def orm_add_exercise(session: AsyncSession, data: dict, training_day_id: int, exercise_type: str):
     """
-    Добавляет новое упражнение в базу данных.
-
-    :param session: Асинхронная сессия SQLAlchemy.
-    :param data: Словарь с данными упражнения (name, description, circle_training и т.д.).
-    :param training_day_id: ID дня тренировки, к которому относится упражнение.
-    :param exercise_type: Тип упражнения ('admin' или 'user').
+    Добавляем новое упражнение в базу данных
+    :param session:
+    :param data:
+    :param training_day_id:
+    :param exercise_type: user(пользовательское) или admin(предустановленное)
     """
-    # Получение максимальной позиции
+
     result = await session.execute(
         select(func.max(Exercise.position))
         .where(Exercise.training_day_id == training_day_id)
@@ -168,6 +258,12 @@ async def orm_add_exercise(session: AsyncSession, data: dict, training_day_id: i
 
 
 async def orm_get_exercises(session: AsyncSession, training_day_id: int):
+    """
+    Получаем все упражнения, использованными пользователем в определенный день
+    :param session:
+    :param training_day_id:
+    :return:
+    """
     query = select(Exercise).where(Exercise.training_day_id == training_day_id).order_by(Exercise.position)
     result = await session.execute(query)
     return result.scalars().all()
@@ -175,12 +271,14 @@ async def orm_get_exercises(session: AsyncSession, training_day_id: int):
 
 async def orm_get_circular_exercises(session: AsyncSession, training_day_id: int):
     """
-    Возвращает все упражнения для заданного тренировочного дня,
-    которые помечены как круговые (circle_training=True).
+    Получаем все круговые упражнения, использованными пользователем в определенный день
+    :param session:
+    :param training_day_id:
+    :return:
     """
     query = (
         select(Exercise)
-        .where(Exercise.training_day_id == training_day_id, Exercise.circle_training == True)
+        .where(and_(Exercise.training_day_id == training_day_id, Exercise.circle_training.is_(True)))
         .order_by(Exercise.position)
     )
     result = await session.execute(query)
@@ -189,12 +287,14 @@ async def orm_get_circular_exercises(session: AsyncSession, training_day_id: int
 
 async def orm_get_standard_exercises(session: AsyncSession, training_day_id: int):
     """
-    Возвращает все упражнения для заданного тренировочного дня,
-    которые НЕ помечены как круговые (circle_training=False).
+    Получаем все стандартные упражнения, использованными пользователем в определенный день
+    :param session:
+    :param training_day_id:
+    :return:
     """
     query = (
         select(Exercise)
-        .where(Exercise.training_day_id == training_day_id, Exercise.circle_training == False)
+        .where(and_(Exercise.training_day_id == training_day_id, Exercise.circle_training.is_(False)))
         .order_by(Exercise.position)
     )
     result = await session.execute(query)
@@ -202,6 +302,12 @@ async def orm_get_standard_exercises(session: AsyncSession, training_day_id: int
 
 
 async def orm_get_exercise(session: AsyncSession, exercise_id: int):
+    """
+    Получаем определенное упражнение по его id
+    :param session:
+    :param exercise_id:
+    :return:
+    """
     query = select(Exercise).where(Exercise.id == exercise_id)
     result = await session.execute(query)
     return result.scalar()
@@ -209,12 +315,12 @@ async def orm_get_exercise(session: AsyncSession, exercise_id: int):
 
 async def orm_update_exercise(session: AsyncSession, exercise_id: int, data: dict):
     """
-    Обновляет существующее упражнение в базе данных.
-
-    :param session: Асинхронная сессия SQLAlchemy.
-    :param exercise_id: ID упражнения для обновления.
-    :param data: Словарь с обновляемыми данными (name, description, reps, sets, training_day_id,
-                 admin_exercise_id, user_exercise_id, circle_training, exercise_type).
+    Обновляем информацию об упражнении, найденном по его id
+    :param session:
+    :param exercise_id:
+    :param data: Возможные значения: имя, описание, базовое кол-во повторений, базовое кол-во подходов, id дня,
+     круговое упражнение или нет(bool)
+    :return:
     """
     update_data = {}
 
@@ -263,7 +369,10 @@ async def orm_update_exercise(session: AsyncSession, exercise_id: int, data: dic
 
 async def orm_delete_exercise(session: AsyncSession, exercise_id: int):
     """
-    Удаляет упражнение из базы данных.
+    Удаляем упражнение из базы
+    :param session:
+    :param exercise_id:
+    :return:
     """
     query = delete(Exercise).where(Exercise.id == exercise_id)
     await session.execute(query)
@@ -275,6 +384,12 @@ async def orm_delete_exercise(session: AsyncSession, exercise_id: int):
 
 
 async def move_exercise_up(session: AsyncSession, exercise_id: int):
+    """
+    Поднимаем порядок упражнения в тренировочном дне
+    :param session:
+    :param exercise_id:
+    :return:
+    """
     exercise = await session.get(Exercise, exercise_id)
     if not exercise:
         return "Упражнение не найдено."
@@ -308,6 +423,12 @@ async def move_exercise_up(session: AsyncSession, exercise_id: int):
 
 
 async def move_exercise_down(session: AsyncSession, exercise_id: int):
+    """
+    Опускаем порядок упражнения в тренировочном дне
+    :param session:
+    :param exercise_id:
+    :return:
+    """
     exercise = await session.get(Exercise, exercise_id)
     if not exercise:
         return "Упражнение не найдено."
@@ -340,7 +461,20 @@ async def move_exercise_down(session: AsyncSession, exercise_id: int):
     return "Упражнение перемещено вниз."
 
 
+"""
+Шаблонные подходы
+"""
+
+
 async def orm_add_exercise_set(session: AsyncSession, exercise_id: int, reps: int):
+    """
+    Добавляем шаблонный подход к упражнению
+    :param session:
+    :param exercise_id:
+    :param reps: кол-во повторений
+    :return:
+    """
+    from database.models import ExerciseSet
     obj = ExerciseSet(
         exercise_id=exercise_id,
         reps=reps,
@@ -350,12 +484,26 @@ async def orm_add_exercise_set(session: AsyncSession, exercise_id: int, reps: in
 
 
 async def orm_get_exercise_set(session: AsyncSession, exercise_set_id: int):
+    """
+    Получаем шаблонный подход по его id
+    :param session:
+    :param exercise_set_id:
+    :return:
+    """
+    from database.models import ExerciseSet
     query = select(ExerciseSet).where(ExerciseSet.id == exercise_set_id)
     result = await session.execute(query)
     return result.scalar()
 
 
 async def orm_get_exercise_sets(session: AsyncSession, exercise_id: int):
+    """
+    Получаем все шаблонные подходы для упражнения пользователя
+    :param session:
+    :param exercise_id:
+    :return:
+    """
+    from database.models import ExerciseSet
     query = (
         select(ExerciseSet)
         .where(ExerciseSet.exercise_id == exercise_id)
@@ -366,12 +514,27 @@ async def orm_get_exercise_sets(session: AsyncSession, exercise_id: int):
 
 
 async def orm_delete_exercise_set(session: AsyncSession, exercise_set_id: int):
+    """
+    Удаляем из базы шаблонный подход
+    :param session:
+    :param exercise_set_id:
+    :return:
+    """
+    from database.models import ExerciseSet
     query = delete(ExerciseSet).where(ExerciseSet.id == exercise_set_id)
     await session.execute(query)
     await session.commit()
 
 
 async def orm_update_exercise_set(session: AsyncSession, exercise_set_id: int, reps: int):
+    """
+    Обновляем информацию о шаблонном подходе
+    :param session:
+    :param exercise_set_id:
+    :param reps: кол-во поторений
+    :return:
+    """
+    from database.models import ExerciseSet
     query = (
         update(ExerciseSet)
         .where(ExerciseSet.id == exercise_set_id)
@@ -381,9 +544,18 @@ async def orm_update_exercise_set(session: AsyncSession, exercise_set_id: int, r
     await session.commit()
 
 
-############################ Подходы (Sets) ######################################
+"""
+Подходы
+"""
+
 
 async def orm_add_set(session: AsyncSession, data: dict):
+    """
+    Добавляем уже отработанный подход
+    :param session:
+    :param data: вес, повторения, uuid тренировки
+    :return:
+    """
     obj = Set(
         exercise_id=data['exercise_id'],
         weight=data['weight'],
@@ -395,18 +567,37 @@ async def orm_add_set(session: AsyncSession, data: dict):
 
 
 async def orm_get_sets(session: AsyncSession, exercise_id: int):
+    """
+    Получаем отработанные подходы для упражнения пользователя
+    :param session:
+    :param exercise_id:
+    :return:
+    """
     query = select(Set).where(Set.exercise_id == exercise_id)
     result = await session.execute(query)
     return result.scalars().all()
 
 
 async def orm_get_set(session: AsyncSession, set_id: int):
+    """
+    Получаем определенный отработанный подход
+    :param session:
+    :param set_id:
+    :return:
+    """
     query = select(Set).where(Set.id == set_id)
     result = await session.execute(query)
     return result.scalar()
 
 
 async def orm_get_sets_by_session(session: AsyncSession, exercise_id: int, training_session_id: str):
+    """
+    Получаем отработанные подходы для определенной тренировки
+    :param session:
+    :param exercise_id:
+    :param training_session_id:
+    :return:
+    """
     result = await session.execute(
         select(Set)
         .where(Set.exercise_id == exercise_id)
@@ -418,18 +609,13 @@ async def orm_get_sets_by_session(session: AsyncSession, exercise_id: int, train
 
 async def orm_get_all_sets_by_user_id_grouped_by_date(session: AsyncSession, user_id: int):
     """
-    Получает все подходы (Set) для заданного user_id, сгруппированные по дате.
-    Предполагается, что в модели Set есть поле created_at или аналогичное,
-    содержащее дату/время создания подхода.
-
-    :param session: Асинхронная сессия SQLAlchemy.
-    :param user_id: Идентификатор пользователя.
-    :return: Список кортежей (date, [Set, Set, ...]) или любая другая требуемая структура.
+    Получает все отработанные подходы для заданного user_id, сгруппированные по дате
+    :param session:
+    :param user_id: Telegram ID
+    :return:
     """
     from sqlalchemy import func, cast, Date
 
-    # Пример, если в модели Set есть поле created_at (DateTime),
-    # а мы хотим сгруппировать по дате (без учета времени):
     result = await session.execute(
         select(
             cast(Set.created, Date).label("set_date"),
@@ -446,9 +632,18 @@ async def orm_get_all_sets_by_user_id_grouped_by_date(session: AsyncSession, use
     return result.all()
 
 
-############################ Шаблонные упражнения ######################################
+"""
+Предустановленные упражнения
+"""
+
 
 async def orm_add_admin_exercise(session: AsyncSession, data: dict):
+    """
+    Добавляем предустановленное упражнение
+    :param session:
+    :param data: название упражнения, описание, id категории
+    :return:
+    """
     obj = AdminExercises(
         name=data['name'],
         description=data['description'],
@@ -459,24 +654,48 @@ async def orm_add_admin_exercise(session: AsyncSession, data: dict):
 
 
 async def orm_get_admin_exercise(session: AsyncSession, admin_exercise_id: int):
+    """
+    Получаем предустановленное упражнение
+    :param session:
+    :param admin_exercise_id:
+    :return:
+    """
     query = select(AdminExercises).where(AdminExercises.id == admin_exercise_id)
     result = await session.execute(query)
     return result.scalar()
 
 
 async def orm_get_admin_exercises(session: AsyncSession):
+    """
+    Получаем предустановленное упражнение
+    :param session:
+    :return:
+    """
     query = select(AdminExercises)
     result = await session.execute(query)
     return result.scalars().all()
 
 
 async def orm_get_admin_exercises_in_category(session: AsyncSession, category_id: int):
+    """
+    Получаем предустановленные упражнения в категории
+    :param session:
+    :param category_id:
+    :return:
+    """
     query = select(AdminExercises).where(AdminExercises.category_id == category_id)
     result = await session.execute(query)
     return result.scalars().all()
 
 
 async def orm_update_admin_exercise(session: AsyncSession, admin_exercise_id: int, data: dict):
+    """
+    Обновляем предустановленное упражнение
+    :param session:
+    :param admin_exercise_id:
+    :param data: название упражнения, описание, id категории
+    :return:
+    """
     query = (
         update(AdminExercises)
         .where(AdminExercises.id == admin_exercise_id)
@@ -491,6 +710,12 @@ async def orm_update_admin_exercise(session: AsyncSession, admin_exercise_id: in
 
 
 async def orm_delete_admin_exercise(session: AsyncSession, admin_exercise_id):
+    """
+    Удаляем предустановленное упражнение
+    :param session:
+    :param admin_exercise_id:
+    :return:
+    """
     admin_exercise = await session.get(AdminExercises, admin_exercise_id)
     if admin_exercise:
         await session.delete(admin_exercise)
@@ -501,8 +726,18 @@ async def orm_delete_admin_exercise(session: AsyncSession, admin_exercise_id):
             raise e
 
 
-################################## Уникальные упражнения user ###############################################
+"""
+Пользовательские упражнения
+"""
+
+
 async def orm_add_user_exercise(session: AsyncSession, data: dict):
+    """
+    Добавляем пользовательское упражнение
+    :param session:
+    :param data: Название упражнения, описание, Telegram ID, ID категории
+    :return:
+    """
     obj = UserExercises(
         name=data['name'],
         description=data['description'],
@@ -514,28 +749,53 @@ async def orm_add_user_exercise(session: AsyncSession, data: dict):
 
 
 async def orm_get_user_exercise(session: AsyncSession, user_exercise_id: int):
+    """
+    Получаем пользовательское упражнение по его id
+    :param session:
+    :param user_exercise_id:
+    :return:
+    """
     query = select(UserExercises).where(UserExercises.id == user_exercise_id)
     result = await session.execute(query)
     return result.scalar()
 
 
 async def orm_get_user_exercises(session: AsyncSession, user_id: int):
+    """
+    Получаем все пользовательские упражнения по tg_id
+    :param session:
+    :param user_id: Telegram ID
+    :return:
+    """
     query = select(UserExercises).filter(UserExercises.user_id == user_id)
     result = await session.execute(query)
     return result.scalars().all()
 
 
 async def orm_get_user_exercises_in_category(session: AsyncSession, category_id: int, user_id: int):
+    """
+    Получаем все пользовательские упражнения в определенной категории
+    :param session:
+    :param category_id:
+    :param user_id: Telegram ID
+    :return:
+    """
     query = (
         select(UserExercises)
-        .where(UserExercises.category_id == category_id)
-        .where(UserExercises.user_id == user_id)
+        .where(and_(UserExercises.category_id == category_id, UserExercises.user_id == user_id))
     )
     result = await session.execute(query)
     return result.scalars().all()
 
 
 async def orm_update_user_exercise(session: AsyncSession, user_exercise_id: int, data: dict):
+    """
+    Обновляем информацию о пользовательском упражнении
+    :param session:
+    :param user_exercise_id:
+    :param data: Название упражнения, описание, ID категории
+    :return:
+    """
     query = (
         update(UserExercises)
         .where(UserExercises.id == user_exercise_id)
@@ -550,16 +810,28 @@ async def orm_update_user_exercise(session: AsyncSession, user_exercise_id: int,
 
 
 async def orm_delete_user_exercise(session: AsyncSession, user_exercise_id: int):
+    """
+    Удаляем пользовательское упражнение из базы
+    :param session:
+    :param user_exercise_id:
+    :return:
+    """
     query = delete(UserExercises).where(UserExercises.id == user_exercise_id)
     await session.execute(query)
     await session.commit()
 
 
-##################### Категории упражнений #####################################
+"""
+Категории упражнений
+"""
+
+
 async def orm_get_categories(session: AsyncSession, user_id: int):
     """
-    Получает список категорий упражнений с количеством упражнений в каждой категории,
-    включая административные и пользовательские упражнения для конкретного пользователя.
+    Получаем категории упражнений
+    :param session:
+    :param user_id: Telegram ID
+    :return:
     """
     admin_select = select(
         AdminExercises.category_id.label('category_id')
@@ -591,6 +863,12 @@ async def orm_get_categories(session: AsyncSession, user_id: int):
 
 
 async def orm_get_category(session: AsyncSession, category_id: int):
+    """
+    Получаем определенную категорию упражнений
+    :param session:
+    :param category_id:
+    :return:
+    """
     query = (
         select(ExerciseCategory).where(ExerciseCategory.id == category_id)
     )
@@ -599,6 +877,12 @@ async def orm_get_category(session: AsyncSession, category_id: int):
 
 
 async def orm_create_categories(session: AsyncSession, categories: list):
+    """
+    Создаем категории упражнений по их названиям
+    :param session:
+    :param categories: список из названий категорий
+    :return:
+    """
     query = select(ExerciseCategory)
     result = await session.execute(query)
     if result.first():
@@ -607,17 +891,23 @@ async def orm_create_categories(session: AsyncSession, categories: list):
     await session.commit()
 
 
+"""
+Тренировка
+"""
+
+
 async def orm_add_training_session(session: AsyncSession, data: dict):
     """
-    Создаёт новую тренировочную сессию для пользователя.
-    data может содержать поля: user_id, date (опционально), note (опционально).
+    Добавляем новую запись о тренировке
+    :param session:
+    :param data: Telegram ID, Дата, Описание
+    :return:
     """
-    from database.models import TrainingSession
 
     new_session = TrainingSession(
         user_id=data["user_id"],
-        date=data.get("date"),  # Можно передать извне, а можно оставить None
-        note=data.get("note", "")  # Можно оставить пустую строку, если нет заметок
+        date=data.get("date"),
+        note=data.get("note", "")
     )
     session.add(new_session)
     try:
@@ -630,7 +920,7 @@ async def orm_add_training_session(session: AsyncSession, data: dict):
 
 async def orm_get_training_session(session: AsyncSession, session_id: str):
     """
-    Получает тренировочную сессию по её UUID.
+    Получаем тренировку по её UUID
     """
     from database.models import TrainingSession
     query = select(TrainingSession).where(TrainingSession.id == session_id)
@@ -640,7 +930,7 @@ async def orm_get_training_session(session: AsyncSession, session_id: str):
 
 async def orm_get_training_sessions_by_user(session: AsyncSession, user_id: int):
     """
-    Возвращает все тренировочные сессии пользователя, отсортированные по дате.
+    Получаем все тренировки пользователя отсортированные по дате
     """
     from database.models import TrainingSession
     query = (
@@ -654,8 +944,10 @@ async def orm_get_training_sessions_by_user(session: AsyncSession, user_id: int)
 
 async def orm_delete_training_session(session: AsyncSession, session_id: str):
     """
-    Удаляет тренировочную сессию по её UUID, вместе с подходами (Set),
-    поскольку cascade='all, delete-orphan' уже прописан.
+    Удаляем запись о тренировке
+    :param session:
+    :param session_id: uuid
+    :return:
     """
     from database.models import TrainingSession
     query = delete(TrainingSession).where(TrainingSession.id == session_id)
@@ -669,7 +961,7 @@ async def orm_delete_training_session(session: AsyncSession, session_id: str):
 
 async def orm_update_training_session(session: AsyncSession, session_id: str, data: dict):
     """
-    Обновляет поле note или дату для тренировочной сессии.
+    Обновляем запись о тренировке
     """
     from database.models import TrainingSession
     update_data = {}
@@ -691,9 +983,18 @@ async def orm_update_training_session(session: AsyncSession, session_id: str, da
         raise e
 
 
-##################### Добавляем юзера в БД #####################################
+"""
+Пользователь
+"""
+
 
 async def orm_add_user(session: AsyncSession, data: dict):
+    """
+    Добавляем запись о пользователе
+    :param session:
+    :param data:
+    :return: Telegram ID, Имя, Вес
+    """
     user = User(
         user_id=data['user_id'],
         name=data['name'],
@@ -704,6 +1005,13 @@ async def orm_add_user(session: AsyncSession, data: dict):
 
 
 async def orm_update_user(session: AsyncSession, user_id: int, data: dict):
+    """
+    Обновляем запись о пользователе
+    :param session:
+    :param user_id:
+    :param data: Имя, Вес
+    :return:
+    """
     query = (
         update(User)
         .where(User.user_id == user_id)
@@ -717,12 +1025,42 @@ async def orm_update_user(session: AsyncSession, user_id: int, data: dict):
 
 
 async def orm_get_all_users(session: AsyncSession):
+    """
+    Получаем всех пользователей бота
+    :param session:
+    :return:
+    """
     query = select(User)
     result = await session.execute(query)
     return result.scalars().all()
 
 
+async def orm_get_user_by_id(session: AsyncSession, user_id: int):
+    """
+    Получаем пользователя по его tg_id
+    :param session:
+    :param user_id: Telegram ID
+    :return:
+    """
+    result = await session.execute(
+        select(User).where(User.user_id == user_id)
+    )
+    return result.scalars().first()
+
+
+"""
+Служебные функции
+"""
+
+
 async def orm_turn_on_off_program(session: AsyncSession, user_id: int, program_id: int | None = None):
+    """
+    Включаем/Выключаем программу тренировок
+    :param session:
+    :param user_id: Telegram ID
+    :param program_id:
+    :return:
+    """
     query = (
         update(User)
         .where(User.user_id == user_id)
@@ -734,14 +1072,13 @@ async def orm_turn_on_off_program(session: AsyncSession, user_id: int, program_i
     await session.commit()
 
 
-async def orm_get_user_by_id(session: AsyncSession, user_id: int):
-    result = await session.execute(
-        select(User).where(User.user_id == user_id)
-    )
-    return result.scalars().first()
-
-
 async def initialize_positions_for_training_day(session: AsyncSession, training_day_id: int):
+    """
+    Инициализируем позиции в тренировочном дне
+    :param session:
+    :param training_day_id:
+    :return:
+    """
     result = await session.execute(
         select(Exercise)
         .where(Exercise.training_day_id == training_day_id)
@@ -754,13 +1091,3 @@ async def initialize_positions_for_training_day(session: AsyncSession, training_
         session.add(exercise)
 
     await session.commit()
-
-
-async def initialize_all_positions(session: AsyncSession):
-    result = await session.execute(
-        select(Exercise.training_day_id).distinct()
-    )
-    training_day_ids = [row[0] for row in result.fetchall()]
-
-    for training_day_id in training_day_ids:
-        await initialize_positions_for_training_day(session, training_day_id)
