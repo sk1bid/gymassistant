@@ -28,57 +28,10 @@ ADMIN_KB = get_keyboard(
     sizes=(2,),
 )
 
+"""
+Классы для FSM
+"""
 
-@admin_router.message(Command("admin"))
-async def admin_features(message: types.Message):
-    await message.answer("Что хотите сделать?", reply_markup=ADMIN_KB)
-
-
-@admin_router.message(F.text == 'Все упражнения')
-async def admin_features(message: types.Message, session: AsyncSession):
-    exercises = await orm_get_admin_exercises(session)
-
-    if not exercises:
-        await message.answer("Упражнения не найдены.")
-        return
-
-    # Формируем кнопки для всех упражнений
-    btns = {exercise.name: f'exercise_{exercise.id}' for exercise in exercises}
-
-    await message.answer(
-        "Список упражнений:",
-        reply_markup=get_callback_btns(btns=btns)
-    )
-
-
-@admin_router.callback_query(F.data.startswith('exercise_'))
-async def starring_at_exercise(callback: types.CallbackQuery, session: AsyncSession):
-    exercise_id = callback.data.split('_')[-1]
-    exercise = await orm_get_admin_exercise(session, int(exercise_id))
-
-    await callback.message.answer(
-        text=f"<strong>{exercise.name}\n</strong>\n{exercise.description}\n",
-        reply_markup=get_callback_btns(
-            btns={
-                "Удалить": f"delete_{exercise.id}",
-                "Изменить": f"change_{exercise.id}",
-            },
-            sizes=(2,)
-        ),
-    )
-    await callback.answer()
-
-
-@admin_router.callback_query(F.data.startswith("delete_"))
-async def delete_exercise_callback(callback: types.CallbackQuery, session: AsyncSession):
-    exercise_id = callback.data.split("_")[-1]
-    await orm_delete_admin_exercise(session, int(exercise_id))
-
-    await callback.answer("Упражнение удалено")
-    await callback.message.answer("Упражнение удалено!")
-
-
-######################### FSM для добавления/изменения упражнений ###################
 
 class AddAdminExercise(StatesGroup):
     name = State()
@@ -99,10 +52,105 @@ class AddBanner(StatesGroup):
     image = State()
 
 
+"""
+Главное меню админа
+"""
+
+
+@admin_router.message(Command("admin"))
+async def admin_features(message: types.Message):
+    """
+    Предложение к вводу, вызываем reply клавиатуру ADMIN_KB
+    :param message:
+    :return:
+    """
+    await message.answer("Что хотите сделать?", reply_markup=ADMIN_KB)
+
+
+@admin_router.message(F.text == 'Все упражнения')
+async def admin_features(message: types.Message, session: AsyncSession):
+    """
+    Если нажата кнопка "Все упражнения":
+    Показывает inline кнопки с предустановленными упражнениями
+    :param message:
+    :param session:
+    :return:
+    """
+    exercises = await orm_get_admin_exercises(session)
+
+    if not exercises:
+        await message.answer("Упражнения не найдены.")
+        return
+
+    btns = {exercise.name: f'exercise_{exercise.id}' for exercise in exercises}
+
+    await message.answer(
+        "Список упражнений:",
+        reply_markup=get_callback_btns(btns=btns)
+    )
+
+
+"""
+Взаимодействие с предустановленными упражнениями
+"""
+
+
+@admin_router.callback_query(F.data.startswith('exercise_'))
+async def starring_at_exercise(callback: types.CallbackQuery, session: AsyncSession):
+    """
+    При нажатии на соответствующее упражнение:
+    Выводим название упражнения, inline кнопки Удалить/изменить
+    :param callback:
+    :param session:
+    :return:
+    """
+    exercise_id = callback.data.split('_')[-1]
+    exercise = await orm_get_admin_exercise(session, int(exercise_id))
+
+    await callback.message.answer(
+        text=f"<strong>{exercise.name}\n</strong>\n{exercise.description}\n",
+        reply_markup=get_callback_btns(
+            btns={
+                "Удалить": f"delete_{exercise.id}",
+                "Изменить": f"change_{exercise.id}",
+            },
+            sizes=(2,)
+        ),
+    )
+    await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("delete_"))
+async def delete_exercise_callback(callback: types.CallbackQuery, session: AsyncSession):
+    """
+    При нажатии на кнопку удалить упражнение:
+    Удаляем из базы упражнение
+    :param callback:
+    :param session:
+    :return:
+    """
+    exercise_id = callback.data.split("_")[-1]
+    await orm_delete_admin_exercise(session, int(exercise_id))
+
+    await callback.answer("Упражнение удалено")
+    await callback.message.answer("Упражнение удалено!")
+
+
+"""
+Добавление предустановленного упражнения
+"""
+
+
 @admin_router.callback_query(StateFilter(None), F.data.startswith("change_"))
-async def change_exercise_callback(
-        callback: types.CallbackQuery, state: FSMContext, session: AsyncSession
-):
+async def change_exercise_callback(callback: types.CallbackQuery, state: FSMContext, session: AsyncSession):
+    """
+    При нажатии на кнопку изменить упражнение:
+    Предлагаем пользователю ввести новое название упражнения
+    :param callback:
+    :param state:
+    :param session:
+    :return:
+    """
     exercise_id = callback.data.split("_")[-1]
     exercise_for_change = await orm_get_admin_exercise(session, int(exercise_id))
     AddAdminExercise.exercise_for_change = exercise_for_change
@@ -114,6 +162,13 @@ async def change_exercise_callback(
 
 @admin_router.message(StateFilter(None), F.text == "Добавить упражнение")
 async def add_exercise(message: types.Message, state: FSMContext):
+    """
+    При нажатии на кнопку "Добавить упражнение":
+    Предлагаем пользователю ввести название упражнения
+    :param message:
+    :param state:
+    :return:
+    """
     await message.answer("Введите название упражнения:", reply_markup=types.ReplyKeyboardRemove())
     await state.set_state(AddAdminExercise.name)
 
@@ -127,12 +182,26 @@ async def add_exercise(message: types.Message, state: FSMContext):
                 AddBanner.image.state),
     F.text.casefold() == "отмена")
 async def cancel_handler(message: types.Message, state: FSMContext) -> None:
+    """
+    Обработчик действия отмены ввода при создании предустановленного упражнения:
+    Очищает данные состояния
+    :param message:
+    :param state:
+    :return:
+    """
     await state.clear()
     await message.answer("Действия отменены", reply_markup=ADMIN_KB)
 
 
 @admin_router.message(AddAdminExercise.name, F.text)
 async def add_name(message: types.Message, state: FSMContext):
+    """
+    Сохраняем название упражнения;
+    Предлагаем пользователю ввести описание упражнения
+    :param message:
+    :param state:
+    :return:
+    """
     await state.update_data(name=message.text)
     await message.answer("Введите описание упражнения")
     await state.set_state(AddAdminExercise.description)
@@ -140,6 +209,14 @@ async def add_name(message: types.Message, state: FSMContext):
 
 @admin_router.message(AddAdminExercise.description, F.text)
 async def add_description(message: types.Message, state: FSMContext, session: AsyncSession):
+    """
+    Сохраняем описание упражнения;
+    Предлагаем пользователю выбрать категорию упражнения(группу мышц)
+    :param message:
+    :param state:
+    :param session:
+    :return:
+    """
     await state.update_data(description=message.text)
     categories = await orm_get_categories(session, message.from_user.id)
     btns = {category.name: str(category.id) for category, _ in categories}
@@ -149,6 +226,13 @@ async def add_description(message: types.Message, state: FSMContext, session: As
 
 @admin_router.callback_query(AddAdminExercise.category_id)
 async def category_choice(callback: types.CallbackQuery, state: FSMContext, session: AsyncSession):
+    """
+    Сохраняем категорию упражнения и создаем запись в базе данных
+    :param callback:
+    :param state:
+    :param session:
+    :return:
+    """
     categories = await orm_get_categories(session, callback.from_user.id)
     category_ids = [category.id for category, _ in categories]
     if int(callback.data) in category_ids:
@@ -172,17 +256,31 @@ async def category_choice(callback: types.CallbackQuery, state: FSMContext, sess
         await callback.answer()
 
 
-# Ловим любые некорректные действия, кроме нажатия на кнопку выбора категории
 @admin_router.message(AddAdminExercise.category_id)
 async def category_choice2(message: types.Message):
+    """
+    Отлавливаем некорректные действия
+    :param message:
+    :return:
+    """
     await message.answer("'Выберите категорию из кнопок.'")
 
 
-################# Изменение/добавление баннеров ############################
+"""
+Работа с баннерами
+"""
 
 
 @admin_router.message(StateFilter(None), F.text == 'Добавить/Изменить баннер')
 async def add_image2(message: types.Message, state: FSMContext, session: AsyncSession):
+    """
+    При нажатии кнопки "Добавить/изменить баннер":
+    Предлагаем пользователю отправить фото баннера и в описании указать где он будет появляться
+    :param message:
+    :param state:
+    :param session:
+    :return:
+    """
     pages_names = [page.name for page in await orm_get_info_pages(session)]
     await message.answer(f"Отправьте фото баннера.\nУкажите, для какой страницы: {', '.join(pages_names)}")
     await state.set_state(AddBanner.image)
@@ -190,6 +288,13 @@ async def add_image2(message: types.Message, state: FSMContext, session: AsyncSe
 
 @admin_router.message(AddBanner.image, F.photo)
 async def add_banner(message: types.Message, state: FSMContext, session: AsyncSession):
+    """
+    Добавляем баннер в базу данных
+    :param message:
+    :param state:
+    :param session:
+    :return:
+    """
     image_id = message.photo[-1].file_id
     for_page = message.caption.strip()
 
