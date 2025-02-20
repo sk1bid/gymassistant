@@ -45,8 +45,7 @@ from kbds.inline import (
     get_user_main_btns,
     get_custom_exercise_btns,
     get_sessions_results_btns,
-    get_exercises_result_btns,
-)
+    get_exercises_result_btns, )
 from utils.paginator import Paginator
 from utils.separator import get_action_part
 from utils.temporary_storage import retrieve_data_temporarily
@@ -57,17 +56,16 @@ WEEK_DAYS_RU = ["Понедельник", "Вторник", "Среда", "Че�
 def exercises_in_program(user_exercises: list, circle_training: bool = False):
     """
     Форматирует список упражнений с разделителями для круговой тренировки и
-    отображает сообщение о режиме круговой тренировки, если он активен.
+    отображает сообщение о режиме круговой тренировки, если он активен
 
-    :param user_exercises: Список упражнений.
-    :param circle_training: Флаг, указывающий, активна ли круговая тренировка.
-    :return: Отформатированный текст для отображения.
+    :param user_exercises: Список упражнений
+    :param circle_training: Флаг, указывающий, активна ли круговая тренировка
+    :return:
     """
     caption_text = "<b>Ваши упражнения:</b>\n\n"
 
     if not user_exercises:
         if circle_training:
-            # Пользователь начал круговую тренировку, но упражнений ещё нет
             caption_text += (
                 "<strong>Вы находитесь в режиме круговой тренировки. Добавьте круговые упражнения.</strong>"
             )
@@ -92,7 +90,6 @@ def exercises_in_program(user_exercises: list, circle_training: bool = False):
     if current_block:
         blocks.append((current_block_type, current_block))
 
-    # Форматируем каждый блок
     for block_type, exercises in blocks:
         if block_type == 'circular':
             caption_text += "<strong>Круговая тренировка:</strong>\n"
@@ -103,14 +100,32 @@ def exercises_in_program(user_exercises: list, circle_training: bool = False):
             for ex in exercises:
                 caption_text += f"🔘 <b>{ex.name}</b>\n"
 
-    # Добавляем сообщение о режиме круговой тренировки, если он активен
     if circle_training:
         caption_text += "\n<strong>Вы находитесь в режиме круговой тренировки. Добавьте круговые упражнения.</strong>"
 
     return caption_text
 
 
+def pages(paginator: Paginator, program_name: str):
+    btns = {}
+    if paginator.has_previous():
+        btns["◀ Пред."] = f"p_{program_name}"
+    if paginator.has_next():
+        btns["След. ▶"] = f"n_{program_name}"
+    return btns
+
+
+"""
+Главное меню
+"""
+
+
 async def main_menu(session: AsyncSession):
+    """
+    Отображает главное меню
+    :param session:
+    :return:
+    """
     try:
         banner = await orm_get_banner(session, "main")
         banner_image = InputMediaPhoto(media=banner.image,
@@ -127,7 +142,20 @@ async def main_menu(session: AsyncSession):
         return error_image, kbds
 
 
+"""
+Функции профиля
+"""
+
+
 async def profile(session: AsyncSession, level: int, action: str, user_id: int):
+    """
+    Отображает профиль пользователя
+    :param session:
+    :param level: уровень меню(1)
+    :param action: название действия
+    :param user_id: Telegram ID
+    :return:
+    """
     try:
         banner, user = await gather(
             orm_get_banner(session, action),
@@ -150,36 +178,35 @@ async def profile(session: AsyncSession, level: int, action: str, user_id: int):
 
 async def training_results(session: AsyncSession, level: int, user_id: int, page: int):
     """
-        Показываем список тренировочных сессий (TrainingSession) для данного user_id.
-        Группируем подходы (Set) именно по session_id, а не по дате.
-        """
+    Отображает список выполненных тренировок пользователем
+    :param session:
+    :param level: уровень(2)
+    :param user_id: Telegram ID
+    :param page: Номер страницы для пагинации
+    :return:
+    """
     try:
-        # Получаем "баннер" (например, картинка+текст) и сам объект пользователя
+
         banner, user = await asyncio.gather(
             orm_get_banner(session, "training_stats"),
             orm_get_user_by_id(session, user_id)
         )
 
-        # Получаем все сессии пользователя
         all_sessions = await orm_get_training_sessions_by_user(session, user_id)
 
-        # Если никаких сессий нет
         if not all_sessions:
             banner_image = InputMediaPhoto(
                 media=banner.image,
                 caption=f"<strong>{banner.description}\n\nНет ни одной тренировки</strong>"
             )
-            # Пусть клавиатура будет только "назад"
             kbds = get_sessions_results_btns(
                 level=level,
                 page=page, sessions=[], pagination_btns={})
             return banner_image, kbds
 
-        # Пагинация (по 5 сессий на страницу, например)
         paginator = Paginator(array=all_sessions, page=page, per_page=5)
         current_page_data = paginator.get_page()
 
-        # Формируем caption с информацией о том, какая страница и сколько всего страниц
         caption = (
             f"<strong>Ваши тренировки\n"
             f"Страница {paginator.page}/{paginator.pages}\n\n"
@@ -190,7 +217,6 @@ async def training_results(session: AsyncSession, level: int, user_id: int, page
             caption=caption
         )
 
-        # Генерируем кнопки
         pagination_btns = pages(paginator, "t")
         kbds = get_sessions_results_btns(
             level=level,
@@ -212,7 +238,13 @@ async def training_results(session: AsyncSession, level: int, user_id: int, page
 
 async def show_result(session: AsyncSession, level: int, page: int, session_page: int, session_number: str):
     """
-    Показывает упражнения (с пагинацией) в рамках конкретной тренировочной сессии.
+    Показывает результат выполненной тренировки
+    :param session:
+    :param level: уровень меню(3)
+    :param page: номер страницы для всех тренировок
+    :param session_page: номер страницы для упражнений в данной тренировке
+    :param session_number: ключ от хранилища (в оперативной памяти)
+    :return:
     """
     try:
         banner = await orm_get_banner(session, "training_stats")
@@ -309,7 +341,25 @@ async def show_result(session: AsyncSession, level: int, page: int, session_page
         return error_image, kbds
 
 
+"""
+Расписание тренировок
+"""
+
+
 async def schedule(session: AsyncSession, level: int, action: str, training_day_id: int, user_id: int):
+    """
+    Показывает расписание пользователя
+    Изначально этот блок меню показывает текущую неделю
+    Также можно её развернуть в полный календарь месяца
+    На каждый день можно нажать и настроить его
+    Здесь идет запуск тренировки
+    :param session:
+    :param level: уровень(1)
+    :param action: название действия
+    :param training_day_id:
+    :param user_id: Telegram ID
+    :return:
+    """
     try:
         banner, user_data = await gather(
             orm_get_banner(session, "schedule"),
@@ -396,6 +446,14 @@ async def schedule(session: AsyncSession, level: int, action: str, training_day_
 
 
 async def training_process(session: AsyncSession, level: int, training_day_id: int):
+    """
+    Показывает информационное сообщение во время тренировки пользователя
+    Здесь можно завершить тренировку досрочно
+    :param session:
+    :param level: уровень меню(2)
+    :param training_day_id:
+    :return:
+    """
     try:
         banner = await orm_get_banner(session, "training_process")
         user_exercises = await orm_get_exercises(session, training_day_id)
@@ -413,7 +471,20 @@ async def training_process(session: AsyncSession, level: int, training_day_id: i
         return error_image, kbds
 
 
+"""
+Программа тренировок
+"""
+
+
 async def programs_catalog(session: AsyncSession, level: int, action: str, user_id: int):
+    """
+    Показывает список из программ тренировок пользователя
+    :param session:
+    :param level: уровень(1)
+    :param action: название действия
+    :param user_id: Telegram ID
+    :return:
+    """
     try:
         banner, programs = await gather(
             orm_get_banner(session, action),
@@ -434,16 +505,17 @@ async def programs_catalog(session: AsyncSession, level: int, action: str, user_
         return error_image, kbds
 
 
-def pages(paginator: Paginator, program_name: str):
-    btns = {}
-    if paginator.has_previous():
-        btns["◀ Пред."] = f"p_{program_name}"
-    if paginator.has_next():
-        btns["След. ▶"] = f"n_{program_name}"
-    return btns
-
-
 async def program(session: AsyncSession, level: int, training_program_id: int, user_id: int):
+    """
+    Показывает настройки выбранной программы тренировок
+    Программу можно включить/выключить, также удалить
+    Из этого меню можно перейти к настройке тренировочных дней
+    :param session:
+    :param level: уровень(2)
+    :param training_program_id:
+    :param user_id: Telgram ID
+    :return:
+    """
     try:
         user_program = await orm_get_program(session, training_program_id)
         banner = await orm_get_banner(session, "user_program")
@@ -465,12 +537,20 @@ async def program(session: AsyncSession, level: int, training_program_id: int, u
 
 
 async def program_settings(session: AsyncSession, level: int, training_program_id: int, action: str, user_id: int):
+    """
+    Показывает меню настройки программы тренировок
+    :param session:
+    :param level: уровень(3)
+    :param training_program_id:
+    :param action: название действия
+    :param user_id: Telegram ID
+    :return:
+    """
     try:
         user_program = await orm_get_program(session, training_program_id)
         user_data = await orm_get_user_by_id(session, user_id)
         active_program = True if user_data.actual_program_id == user_program.id else False
 
-        # Если действия переключают программу
         if action == "turn_on_prgm":
             await orm_turn_on_off_program(session, user_id=user_id, program_id=training_program_id)
             active_program = True
@@ -497,7 +577,20 @@ async def program_settings(session: AsyncSession, level: int, training_program_i
         return error_image, kbds
 
 
+"""
+Тренировочный день
+"""
+
+
 async def training_days(session, level: int, training_program_id: int, page: int):
+    """
+    Показывает тренировочные дни (в виде пагинации, от понедельника до воскресенья)
+    :param session:
+    :param level: уровень меню(3)
+    :param training_program_id:
+    :param page: номер страницы для пагинации
+    :return:
+    """
     try:
         user_program, training_days_list = await gather(
             orm_get_program(session, training_program_id),
@@ -541,6 +634,16 @@ async def training_days(session, level: int, training_program_id: int, page: int
 
 async def edit_training_day(session: AsyncSession, level: int, training_program_id: int, page: int,
                             training_day_id: int, action: str):
+    """
+    Показывает кнопки для добавления и редактирования упражнений в тренировочном дне
+    :param session:
+    :param level: уровень(4)
+    :param training_program_id:
+    :param page: страница для пагинации
+    :param training_day_id:
+    :param action: название действия
+    :return:
+    """
     try:
         user_exercises = await orm_get_exercises(session, training_day_id)
         banner = await orm_get_banner(session, "user_program")
@@ -568,8 +671,25 @@ async def edit_training_day(session: AsyncSession, level: int, training_program_
         return error_image, kbds
 
 
+"""
+Добавление упражнений
+"""
+
+
 async def show_categories(session: AsyncSession, level: int, training_program_id: int, training_day_id: int, page: int,
                           action: str, user_id: int, circle_training: bool):
+    """
+    Показывает категории упражнений для добавления в тренировочный день
+    :param session:
+    :param level: уровень(5)
+    :param training_program_id:
+    :param training_day_id:
+    :param page: страница для пагинации
+    :param action: название действия
+    :param user_id: Telegram ID
+    :param circle_training: флаг(Упражнение для круговой тренировки или для Обычной)
+    :return:
+    """
     try:
         user_exercises = await orm_get_exercises(session, training_day_id)
         user_data = await orm_get_user_by_id(session, user_id)
@@ -613,6 +733,21 @@ async def show_categories(session: AsyncSession, level: int, training_program_id
 async def show_exercises_in_category(session: AsyncSession, level: int, exercise_id: int, training_day_id: int,
                                      page: int, action: str, training_program_id: int, category_id: int, user_id: int,
                                      empty: bool, circle_training: bool):
+    """
+    Показывает пользовательские и предустановленные упражнения в выбранной категории
+    :param session:
+    :param level: уровень(6)
+    :param exercise_id: ID выбранного упражнения
+    :param training_day_id:
+    :param page: номер страницы для пагинации
+    :param action: название действия
+    :param training_program_id:
+    :param category_id: ID выбранной категории
+    :param user_id: Telegram ID
+    :param empty: Флаг указывающий на принадлежность категории к Пользовательским упражнениям
+    :param circle_training: Флаг указывающий на тип упражнения
+    :return:
+    """
     try:
         banner = await orm_get_banner(session, "user_program")
         category = await orm_get_category(session, category_id)
@@ -620,7 +755,6 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
         admin_exercises = await orm_get_admin_exercises_in_category(session, category_id)
         user_exercises = await orm_get_exercises(session, training_day_id)
         user_custom_exercises = await orm_get_user_exercises_in_category(session, category_id, user_id)
-        # Если action начинается на "add_..." - добавляем упражнение из админских или пользовательских в список
         if get_action_part(action).startswith("add_"):
             if exercise_id:
                 if "custom" in get_action_part(action):
@@ -702,6 +836,17 @@ async def show_exercises_in_category(session: AsyncSession, level: int, exercise
 
 async def edit_exercises(session: AsyncSession, level: int, exercise_id: int, training_day_id: int,
                          page: int, action: str, training_program_id: int):
+    """
+    Показывает настройки выбранного упражнения: можно переместить вверх/вниз, удалить и настроить кол-во подходов и повторений
+    :param session:
+    :param level: уровень(5)
+    :param exercise_id: ID выбранного упражнения
+    :param training_day_id:
+    :param page: номер страницы для пагинации
+    :param action: название действия
+    :param training_program_id:
+    :return:
+    """
     try:
         user_exercises = await orm_get_exercises(session, training_day_id)
         banner = await orm_get_banner(session, "user_program")
@@ -728,6 +873,17 @@ async def edit_exercises(session: AsyncSession, level: int, exercise_id: int, tr
 
 async def exercise_settings(session: AsyncSession, level: int, exercise_id: int, training_day_id: int,
                             page: int, action: str, training_program_id: int):
+    """
+    Показывает кнопки для настройки каждого подхода для выбранного упражнения
+    :param session:
+    :param level: уровень(6)
+    :param exercise_id: ID выбранного упражнения
+    :param training_day_id:
+    :param page: номер страницы для пагинации
+    :param action: название действия
+    :param training_program_id:
+    :return:
+    """
     try:
         user_exercise = await orm_get_exercise(session, exercise_id)
         banner = await orm_get_banner(session, "user_program")
@@ -755,7 +911,22 @@ async def exercise_settings(session: AsyncSession, level: int, exercise_id: int,
 
 async def custom_exercises(session: AsyncSession, level: int, training_day_id: int,
                            page: int, action: str, training_program_id: int, category_id: int, user_id: int,
-                           empty: bool, exericise_id: int, circle_training: bool):
+                           empty: bool, exercise_id: int, circle_training: bool):
+    """
+    Показывает список пользовательских упражнений с возможностью удалить выбранное упражнение
+    :param session:
+    :param level: уровень(7)
+    :param training_day_id:
+    :param page: номер страницы для пагинации
+    :param action: название действия
+    :param training_program_id:
+    :param category_id: ID выбранной категории
+    :param user_id: Telegram ID
+    :param empty: Флаг указывающий на принадлежность категории к Пользовательским упражнениям
+    :param exercise_id: ID выбранного упражнения
+    :param circle_training: Флаг указывающий на тип упражнения
+    :return:
+    """
     try:
         if empty is False and category_id:
             custom_user_exercises = await orm_get_user_exercises_in_category(session, category_id, user_id)
@@ -777,7 +948,7 @@ async def custom_exercises(session: AsyncSession, level: int, training_day_id: i
 
             kbds = get_custom_exercise_btns(level=level, action=action, program_id=training_program_id, page=page,
                                             training_day_id=training_day_id, category_id=category_id, empty=empty,
-                                            user_exercises=custom_user_exercises, exercise_id=exericise_id,
+                                            user_exercises=custom_user_exercises, exercise_id=exercise_id,
                                             circle_training=circle_training)
         else:
             custom_user_exercises = await orm_get_user_exercises(session, user_id)
@@ -796,7 +967,7 @@ async def custom_exercises(session: AsyncSession, level: int, training_day_id: i
 
             kbds = get_custom_exercise_btns(level=level, action=action, program_id=training_program_id, page=page,
                                             training_day_id=training_day_id, category_id=category_id, empty=empty,
-                                            user_exercises=custom_user_exercises, exercise_id=exericise_id,
+                                            user_exercises=custom_user_exercises, exercise_id=exercise_id,
                                             circle_training=circle_training)
 
         return user_image, kbds
@@ -809,6 +980,11 @@ async def custom_exercises(session: AsyncSession, level: int, training_day_id: i
         )
         kbds = error_btns()
         return error_image, kbds
+
+
+"""
+Мета-функция (Получает данные со всех функций и организовывает навигацию)
+"""
 
 
 async def get_menu_content(session: AsyncSession, level: int, action: str, training_program_id: int = None,
@@ -831,7 +1007,6 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
                 return await schedule(session, level, action, training_day_id, user_id)
 
         elif level == 2:
-            # Программа или процесс тренировки
             if action == "training_process":
                 return await training_process(session, level, training_day_id)
             if action == "trd_sts" or action.startswith("n_t") or action.startswith("p_t"):
@@ -839,7 +1014,6 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
             return await program(session, level, training_program_id, user_id)
 
         elif level == 3:
-            # Настройки программы или дни тренировок
             if action in ["prg_stg", "turn_on_prgm", "turn_off_prgm"] or action.startswith(
                     "to_del_prgm") or action.startswith("prgm_del"):
                 return await program_settings(session, level, training_program_id, action, user_id)
@@ -852,7 +1026,6 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
             return await edit_training_day(session, level, training_program_id, page, training_day_id, action)
 
         elif level == 5:
-            # Либо редактирование упражнений, либо выбор категории
             if action in ["edit_excs", "shd/edit_excs", "to_edit", "shd/to_edit",
                           "del", "shd/del", "mv", "shd/mv"]:
                 return await edit_exercises(session, level, exercise_id, training_day_id, page, action,
@@ -862,7 +1035,6 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
                                              user_id, circle_training)
 
         elif level == 6:
-            # Настройки упражнения или список упражнений в категории
             if action in ["ex_stg", "shd/ex_stg"] or action.startswith("➕") or action.startswith(
                     "➖") or action.startswith("shd/➕") or action.startswith("shd/➖"):
                 return await exercise_settings(session, level, exercise_id, training_day_id, page, action,
@@ -871,7 +1043,6 @@ async def get_menu_content(session: AsyncSession, level: int, action: str, train
                                                     training_program_id, category_id, user_id, empty, circle_training)
 
         elif level == 7:
-            # Пользовательские упражнения
             return await custom_exercises(session, level, training_day_id, page, action,
                                           training_program_id, category_id, user_id, empty, exercise_id,
                                           circle_training)
