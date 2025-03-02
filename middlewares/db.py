@@ -1,5 +1,5 @@
-import logging  # Убедитесь, что модуль logging импортирован и настроен
-import time  # Добавляем импорт модуля time
+import logging
+import time
 from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
@@ -20,9 +20,9 @@ class DataBaseSession(BaseMiddleware):
         start_time = time.time()  # Начало измерения времени
         async with self.session_pool() as session:
             data['session'] = session
-            result = await handler(event, data)  # Вызов обработчика события
-        elapsed_time = time.time() - start_time  # Конец измерения времени
-        if elapsed_time > 1:  # Если обработка заняла более 1 секунды
+            result = await handler(event, data)
+        elapsed_time = time.time() - start_time
+        if elapsed_time > 1:
             logging.warning(
                 f"Длительная обработка события {event.__class__.__name__} "
                 f"от пользователя {event.from_user.id if hasattr(event, 'from_user') else 'N/A'}: "

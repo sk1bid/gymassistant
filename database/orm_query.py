@@ -653,6 +653,7 @@ async def orm_get_exercise_max_record(
     result = await session.execute(stmt)
     return result.scalar()
 
+
 async def orm_get_exercise_max_weight(
         session: AsyncSession,
         user_id: int,
@@ -673,6 +674,7 @@ async def orm_get_exercise_max_weight(
     )
     result = await session.execute(stmt)
     return result.scalar()
+
 
 """
 Предустановленные упражнения

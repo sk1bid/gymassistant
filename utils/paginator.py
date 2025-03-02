@@ -4,7 +4,7 @@ import math
 class Paginator:
     def __init__(self, array: list | tuple, page: int = 1, per_page: int = 1):
         if isinstance(array, tuple):
-            array = list(array)  # Преобразуем к списку для возможности изменения
+            array = list(array)
         self.array = array
         self.per_page = per_page
         self.page = page
