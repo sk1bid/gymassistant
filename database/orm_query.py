@@ -632,6 +632,48 @@ async def orm_get_all_sets_by_user_id_grouped_by_date(session: AsyncSession, use
     return result.all()
 
 
+async def orm_get_exercise_max_record(
+        session: AsyncSession,
+        user_id: int,
+        exercise_id: int
+):
+    """
+    Получает максимальное значение (вес * повторения) для конкретного упражнения пользователя,
+    используя связь с TrainingSession и возвращая 0, если подходов не найдено.
+    """
+    stmt = (
+        select(func.coalesce(func.max(Set.weight * Set.repetitions), 0))
+        .join(Exercise, Set.exercise_id == Exercise.id)
+        .join(TrainingSession, Set.training_session_id == TrainingSession.id)
+        .where(
+            TrainingSession.user_id == user_id,
+            Exercise.id == exercise_id
+        )
+    )
+    result = await session.execute(stmt)
+    return result.scalar()
+
+async def orm_get_exercise_max_weight(
+        session: AsyncSession,
+        user_id: int,
+        exercise_id: int
+):
+    """
+    Получает максимальный вес для конкретного упражнения пользователя,
+    используя связь с TrainingSession и возвращая 0, если подходов не найдено.
+    """
+    stmt = (
+        select(func.coalesce(func.max(Set.weight), 0))
+        .join(Exercise, Set.exercise_id == Exercise.id)
+        .join(TrainingSession, Set.training_session_id == TrainingSession.id)
+        .where(
+            TrainingSession.user_id == user_id,
+            Exercise.id == exercise_id
+        )
+    )
+    result = await session.execute(stmt)
+    return result.scalar()
+
 """
 Предустановленные упражнения
 """
