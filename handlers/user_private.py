@@ -1086,7 +1086,7 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
                 f" 🧮: {prev_set.repetitions} раз\n</strong>"
                 f"<strong>Мощность: {int(prev_set.weight * prev_set.repetitions)} кг/блок</strong>\n"
             )
-    prev_sets += f"----------------------------------------\n"
+        prev_sets += f"----------------------------------------\n"
     max_power = await orm_get_exercise_max_record(session, user_id, next_ex.id)
 
     if prev_sets == "":
@@ -1112,16 +1112,19 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
 
         for i, prev_set in enumerate(last_3_sets):
             prev_sets += f"----------------------------------------\n"
-            prev_sets += (f"{prev_set.updated.strftime("%d-%m")}"
-                          f" 🦾: {prev_set.weight} кг/блок,"
-                          f" 🧮: {prev_set.repetitions} повтр.\n")
+            prev_sets += (
+                f"<strong>{prev_set.updated.strftime('%d-%m')}"
+                f" 🦾: {prev_set.weight} кг/блок,"
+                f" 🧮: {prev_set.repetitions} раз\n</strong>"
+                f"<strong>Мощность: {int(prev_set.weight * prev_set.repetitions)} кг/блок</strong>\n"
+            )
             if len(current_sets) > i:
                 if current_sets[i].weight > prev_set.weight:
-                    weight_factor = f"💹+{current_sets[i].weight - prev_set.weight}"
+                    weight_factor = f"💹+{current_sets[i].weight - prev_set.weight:.1f}"
                 elif current_sets[i].weight == prev_set.weight:
                     weight_factor = "👌"
                 else:
-                    weight_factor = f"📉{current_sets[i].weight - prev_set.weight}"
+                    weight_factor = f"📉{current_sets[i].weight - prev_set.weight:.1f}"
 
                 if current_sets[i].repetitions > prev_set.repetitions:
                     reps_factor = f"💹+{current_sets[i].repetitions - prev_set.repetitions}"
@@ -1142,7 +1145,7 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
                               f"Мощность: {int(current_sets[i].weight * current_sets[i].repetitions)} {power_factor}\n"
                               f"🦾: {current_sets[i].weight} кг/блок {weight_factor}\n"
                               f"🧮: {current_sets[i].repetitions} повтр. {reps_factor}\n</strong>")
-    prev_sets += f"----------------------------------------\n"
+        prev_sets += f"----------------------------------------\n"
     if prev_sets == "":
         prev_sets = "Результаты не обнаружены"
     max_power = await orm_get_exercise_max_record(session, user_id, next_ex.id)
@@ -1166,7 +1169,6 @@ async def start_standard_block(
     data = await state.get_data()
     bot_msg_id = data.get("bot_message_id")
     user_id = data.get("user_id")
-    session_id = data.get("training_session_id")
     if not ex_objs:
         await message.answer("Нет упражнений в этом блоке.")
         await move_to_next_block_in_day(message, state, session)
@@ -1599,7 +1601,7 @@ async def finish_training(
             for s_i, s in enumerate(sets, start=1):
                 result_message += (
                     f"\nПодход <strong>{s_i}</strong>: "
-                    f"<strong>Вес: <strong>{s.weight} кг/блок, повторения {s.repetitions}</strong>"
+                    f"<strong>Вес: {s.weight} кг/блок, повторения {s.repetitions}</strong>"
                 )
         else:
             result_message += "\n   Нет данных о подходах."
