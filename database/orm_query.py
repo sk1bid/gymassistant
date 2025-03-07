@@ -676,6 +676,47 @@ async def orm_get_exercise_max_weight(
     return result.scalar()
 
 
+async def orm_get_sets_for_exercise_in_previous_session(
+        session: AsyncSession, user_id: int, exercise_id: int):
+    """
+    Получаем все подходы (Set) для определенного упражнения из предыдущей тренировочной сессии
+    пользователя, то есть из сессии, отличной от текущей, даже если текущая сессия уже содержит подходы.
+
+    :param session:
+    :param user_id:
+    :param exercise_id:
+    :return:
+    """
+    current_session_query = (
+        select(TrainingSession.id)
+        .where(TrainingSession.user_id == user_id)
+        .order_by(TrainingSession.date.desc())
+        .limit(1)
+    )
+    current_training_session_id = (await session.execute(current_session_query)).scalar()
+
+    subquery = (
+        select(TrainingSession.id)
+        .join(Set, Set.training_session_id == TrainingSession.id)
+        .where(TrainingSession.user_id == user_id)
+        .where(Set.exercise_id == exercise_id)
+        .where(TrainingSession.id != current_training_session_id)
+        .order_by(TrainingSession.date.desc())
+        .limit(1)
+    )
+    training_session_id = (await session.execute(subquery)).scalar()
+    if training_session_id is None:
+        return []
+
+    result = await session.execute(
+        select(Set)
+        .where(Set.training_session_id == training_session_id)
+        .where(Set.exercise_id == exercise_id)
+        .order_by(Set.id)
+    )
+    return result.scalars().all()
+
+
 """
 Предустановленные упражнения
 """
