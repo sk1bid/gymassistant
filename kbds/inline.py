@@ -13,7 +13,6 @@ WEEK_DAYS_RU = ["Понедельник", "Вторник", "Среда", "Че�
 
 MONTHS = [(i, calendar.month_name[i]) for i in range(1, 13)]
 
-# Константы для часто используемых «магических» значений
 ADDING_PROGRAM = "adding_program"
 EMPTY_CALLBACK = "empty"
 NO_TRAINING_DAY = "no_training_day"
@@ -1059,7 +1058,11 @@ def get_custom_exercise_btns(
 
     if get_action_part(action) == "to_edit":
         for exercise in user_exercises:
-            button_text = f"👉 {exercise.name}" if exercise_id == exercise.id else f"🔘 {exercise.name}"
+            if exercise.circle_training:
+                marker = "🔄"
+            else:
+                marker = "🔘"
+            button_text = f"👉 {marker + exercise.name}" if exercise_id == exercise.id else f"{marker + exercise.name}"
             exercise_button = InlineKeyboardButton(
                 text=button_text,
                 callback_data=MenuCallBack(
@@ -1210,8 +1213,12 @@ def get_custom_exercise_btns(
             keyboard.row(back_button, add_button)
     else:
         for exercise in user_exercises:
+            if exercise.circle_training:
+                marker = "🔄"
+            else:
+                marker = "🔘"
             exercise_button = InlineKeyboardButton(
-                text=f"🔘 {exercise.name}",
+                text=f"{marker + exercise.name}",
                 callback_data=MenuCallBack(
                     action="to_edit",
                     level=level,
@@ -1226,7 +1233,7 @@ def get_custom_exercise_btns(
             )
             if action.startswith("shd/"):
                 exercise_button = InlineKeyboardButton(
-                    text=f"🔘 {exercise.name}",
+                    text=f"{marker + exercise.name}",
                     callback_data=MenuCallBack(
                         action="shd/to_edit",
                         level=level,
@@ -1308,7 +1315,11 @@ def get_edit_exercise_btns(
 
     if get_action_part(action) == "to_edit":
         for exercise in user_exercises:
-            button_text = f"👉 {exercise.name}" if exercise_id == exercise.id else f"🔘 {exercise.name}"
+            if exercise.circle_training:
+                marker = "🔄"
+            else:
+                marker = "🔘"
+            button_text = f"👉 {marker + exercise.name}" if exercise_id == exercise.id else f"{marker + exercise.name}"
             exercise_button = InlineKeyboardButton(
                 text=button_text,
                 callback_data=MenuCallBack(
@@ -1452,8 +1463,12 @@ def get_edit_exercise_btns(
             keyboard.row(back_button)
     else:
         for exercise in user_exercises:
+            if exercise.circle_training:
+                marker = "🔄"
+            else:
+                marker = "🔘"
             exercise_button = InlineKeyboardButton(
-                text=f"🔘 {exercise.name}",
+                text=f"{marker + exercise.name}",
                 callback_data=MenuCallBack(
                     action="to_edit",
                     level=level,
@@ -1465,7 +1480,7 @@ def get_edit_exercise_btns(
             )
             if action.startswith("shd/"):
                 exercise_button = InlineKeyboardButton(
-                    text=f"🔘 {exercise.name}",
+                    text=f"{marker + exercise.name}",
                     callback_data=MenuCallBack(
                         action="shd/to_edit",
                         level=level,
