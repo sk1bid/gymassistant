@@ -1092,7 +1092,6 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
             else:
                 prev_sets += f"<strong>Подход {i + 1}: еще не выполнен\n</strong>"
 
-            prev_sets += f"----------------------------------------\n"
     max_power = await orm_get_exercise_max_record(session, user_id, next_ex.id)
 
     if prev_sets == "":
@@ -1103,7 +1102,8 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
         f"Упражнение: <strong>{next_ex.name}</strong>\n\n"
         f"Рекорд мощности(повторения*вес):\n<strong>{int(max_power)} кг/блок за подход</strong>\n"
         f"Рекорд поднятого веса:\n<strong>{int(max_weight)} кг/блок за подход</strong>\n\n"
-        f"Результаты прошлой тренировки:\n{prev_sets}\n"
+        f"Результаты прошлой тренировки:\n{prev_sets}"
+        f"----------------------------------------\n\n"
         f"Подход <strong>1 из {next_ex.base_sets}</strong> \nВведите вес снаряда:"
     )
     return text
@@ -1163,7 +1163,7 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
                               f"Мощность: {int(current_sets[i].weight * current_sets[i].repetitions)} {power_factor}\n"
                               f"🦾: {current_sets[i].weight} кг/блок {weight_factor}\n"
                               f"🧮: {current_sets[i].repetitions} повтр. {reps_factor}\n</strong>")
-        prev_sets += f"----------------------------------------\n"
+
     else:
         prev_sets = "<strong>Результаты не обнаружены</strong>\n"
     max_power = await orm_get_exercise_max_record(session, user_id, next_ex.id)
@@ -1172,7 +1172,8 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
         f"Упражнение: <strong>{next_ex.name}</strong>\n\n"
         f"Рекорд мощности(повторения*вес):\n<strong>{int(max_power)} кг/блок за подход</strong>\n"
         f"Рекорд поднятого веса:\n<strong>{int(max_weight)} кг/блок за подход</strong>\n\n"
-        f"Результаты прошлой тренировки:\n{prev_sets}\n"
+        f"Результаты прошлой тренировки:\n{prev_sets}"
+        f"----------------------------------------\n\n"
         f"Подход <strong>{set_index} из {next_ex.base_sets}</strong> \nВведите вес снаряда:"
     )
     return text
