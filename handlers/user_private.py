@@ -40,7 +40,8 @@ from database.orm_query import (
     orm_get_categories,
     orm_delete_user_exercise,
     orm_add_training_session,
-    orm_get_program, orm_get_sets, orm_get_exercise_max_record, orm_get_exercise_max_weight,
+    orm_get_program, orm_get_exercise_max_record, orm_get_exercise_max_weight,
+    orm_get_sets_for_exercise_in_previous_session,
 )
 from handlers.menu_processing import get_menu_content
 from kbds.inline import MenuCallBack, get_url_btns, error_btns, get_callback_btns
@@ -1074,23 +1075,28 @@ async def process_current_block(
 
 
 async def first_result_message(session: AsyncSession, user_id, next_ex):
-    set_list = await orm_get_sets(session, next_ex.id)
-    last_3_sets = set_list[-next_ex.base_sets:]
+    set_list = await orm_get_sets_for_exercise_in_previous_session(session, user_id, next_ex.id)
     prev_sets = ""
-    if last_3_sets:
-        for prev_set in last_3_sets:
-            prev_sets += (
-                f"----------------------------------------\n"
-                f"<strong>{prev_set.updated.strftime('%d-%m')}"
-                f" 🦾: {prev_set.weight} кг/блок,"
-                f" 🧮: {prev_set.repetitions} раз\n</strong>"
-                f"<strong>Мощность: {int(prev_set.weight * prev_set.repetitions)} кг/блок</strong>\n"
-            )
-        prev_sets += f"----------------------------------------\n"
+    if len(set_list) > next_ex.base_sets:
+        set_list = set_list[-next_ex.base_sets:]
+    if set_list:
+        for i in range(next_ex.base_sets):
+            if len(set_list) > i:
+                prev_sets += (
+                    f"----------------------------------------\n"
+                    f"<strong>{set_list[i].updated.strftime('%d-%m')}"
+                    f" 🦾: {set_list[i].weight} кг/блок,"
+                    f" 🧮: {set_list[i].repetitions} раз\n</strong>"
+                    f"<strong>Мощность: {int(set_list[i].weight * set_list[i].repetitions)} кг/блок</strong>\n"
+                )
+            else:
+                prev_sets += f"<strong>Подход {i + 1}: еще не выполнен\n</strong>"
+
+            prev_sets += f"----------------------------------------\n"
     max_power = await orm_get_exercise_max_record(session, user_id, next_ex.id)
 
     if prev_sets == "":
-        prev_sets = "Результаты не обнаружены"
+        prev_sets = "<strong>Результаты не обнаружены</strong>\n"
 
     max_weight = await orm_get_exercise_max_weight(session, user_id, next_ex.id)
     text = (
@@ -1105,49 +1111,61 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
 
 async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_index, session_id):
     current_sets = await orm_get_sets_by_session(session, next_ex.id, session_id)
-    set_list = await orm_get_sets(session, next_ex.id)
-    last_3_sets = set_list[-next_ex.base_sets:]
+    set_list = await orm_get_sets_for_exercise_in_previous_session(session, user_id, next_ex.id)
+    if len(set_list) > next_ex.base_sets:
+        set_list = set_list[-next_ex.base_sets:]
     prev_sets = ""
-    if last_3_sets:
-
-        for i, prev_set in enumerate(last_3_sets):
+    if current_sets:
+        for i in range(next_ex.base_sets):
+            flag = False
             prev_sets += f"----------------------------------------\n"
-            prev_sets += (
-                f"<strong>{prev_set.updated.strftime('%d-%m')}"
-                f" 🦾: {prev_set.weight} кг/блок,"
-                f" 🧮: {prev_set.repetitions} раз\n</strong>"
-                f"<strong>Мощность: {int(prev_set.weight * prev_set.repetitions)} кг/блок</strong>\n"
-            )
-            if len(current_sets) > i:
-                if current_sets[i].weight > prev_set.weight:
-                    weight_factor = f"💹+{current_sets[i].weight - prev_set.weight:.1f}"
-                elif current_sets[i].weight == prev_set.weight:
+            if len(set_list) > i:
+                prev_sets += (
+                    f"{set_list[i].updated.strftime('%d-%m')}"
+                    f" 🦾: {set_list[i].weight} кг/блок,"
+                    f" 🧮: {set_list[i].repetitions} раз\n"
+                    f"Мощность: {int(set_list[i].weight * set_list[i].repetitions)} кг/блок\n"
+                )
+            elif len(current_sets) > len(set_list) and len(current_sets) > i:
+                prev_sets += (f"<strong>Подход {i + 1} 👇  "
+                              f"Мощность: {int(current_sets[i].weight * current_sets[i].repetitions)}\n"
+                              f"🦾: {current_sets[i].weight} кг/блок\n"
+                              f"🧮: {current_sets[i].repetitions} повтр.\n</strong>")
+                flag = True
+
+            else:
+                prev_sets += f"<strong>Подход {i + 1}: еще не выполнен\n</strong>"
+                flag = True
+            if len(current_sets) > i and flag is False:
+                if current_sets[i].weight > set_list[i].weight:
+                    weight_factor = f"💹+{current_sets[i].weight - set_list[i].weight:.1f}"
+                elif current_sets[i].weight == set_list[i].weight:
                     weight_factor = "👌"
                 else:
-                    weight_factor = f"📉{current_sets[i].weight - prev_set.weight:.1f}"
+                    weight_factor = f"📉{current_sets[i].weight - set_list[i].weight:.1f}"
 
-                if current_sets[i].repetitions > prev_set.repetitions:
-                    reps_factor = f"💹+{current_sets[i].repetitions - prev_set.repetitions}"
-                elif current_sets[i].repetitions == prev_set.repetitions:
+                if current_sets[i].repetitions > set_list[i].repetitions:
+                    reps_factor = f"💹+{current_sets[i].repetitions - set_list[i].repetitions}"
+                elif current_sets[i].repetitions == set_list[i].repetitions:
                     reps_factor = "👌"
                 else:
-                    reps_factor = f"📉{current_sets[i].repetitions - prev_set.repetitions}"
+                    reps_factor = f"📉{current_sets[i].repetitions - set_list[i].repetitions}"
 
                 if int(current_sets[i].weight * current_sets[i].repetitions) > int(
-                        prev_set.weight * prev_set.repetitions):
-                    power_factor = f"💹+{int(current_sets[i].weight * current_sets[i].repetitions) - int(prev_set.weight * prev_set.repetitions)}"
-                elif int(current_sets[i].weight * current_sets[i].repetitions) == prev_set.weight * int(
-                        prev_set.repetitions):
+                        set_list[i].weight * set_list[i].repetitions):
+                    power_factor = f"💹+{int(current_sets[i].weight * current_sets[i].repetitions) - int(set_list[i].weight * set_list[i].repetitions)}"
+                elif int(current_sets[i].weight * current_sets[i].repetitions) == set_list[i].weight * int(
+                        set_list[i].repetitions):
                     power_factor = "👌"
                 else:
-                    power_factor = f"📉{int(current_sets[i].weight * current_sets[i].repetitions) - int(prev_set.weight * prev_set.repetitions)}"
+                    power_factor = f"📉{int(current_sets[i].weight * current_sets[i].repetitions) - int(set_list[i].weight * set_list[i].repetitions)}"
                 prev_sets += (f"<strong>Подход {i + 1} 👇  "
                               f"Мощность: {int(current_sets[i].weight * current_sets[i].repetitions)} {power_factor}\n"
                               f"🦾: {current_sets[i].weight} кг/блок {weight_factor}\n"
                               f"🧮: {current_sets[i].repetitions} повтр. {reps_factor}\n</strong>")
         prev_sets += f"----------------------------------------\n"
-    if prev_sets == "":
-        prev_sets = "Результаты не обнаружены"
+    else:
+        prev_sets = "<strong>Результаты не обнаружены</strong>\n"
     max_power = await orm_get_exercise_max_record(session, user_id, next_ex.id)
     max_weight = await orm_get_exercise_max_weight(session, user_id, next_ex.id)
     text = (
@@ -1579,10 +1597,7 @@ async def finish_training(
     :return:
     """
     data = await state.get_data()
-    training_day_id = data.get("training_day_id")
-    training_session_id = data.get("training_session_id")
     bot_msg_id = data.get("bot_message_id")
-
     if bot_msg_id:
         try:
             await message.bot.delete_message(chat_id=message.chat.id, message_id=bot_msg_id)
@@ -1592,19 +1607,7 @@ async def finish_training(
             else:
                 logging.warning(f"Failed to delete bot message: {e}")
 
-    all_exercises = await orm_get_exercises(session, training_day_id)
-    result_message = "Тренировка завершена! Отличная работа!\n\nВаши результаты:\n"
-    for ex in all_exercises:
-        result_message += f"\n👉<strong>Упражнение</strong>: {ex.name}"
-        sets = await orm_get_sets_by_session(session, ex.id, training_session_id)
-        if sets:
-            for s_i, s in enumerate(sets, start=1):
-                result_message += (
-                    f"\nПодход <strong>{s_i}</strong>: "
-                    f"<strong>Вес: {s.weight} кг/блок, повторения {s.repetitions}</strong>"
-                )
-        else:
-            result_message += "\n   Нет данных о подходах."
+    result_message = "Тренировка завершена! Отличная работа!\n\nОзнакомиться с результатами можно в профиле👽"
     result_message += "\n\nДля завершения тренировки нажмите на кнопку в главном сообщении 👆"
     bot_msg = await message.answer(result_message)
     await state.clear()
