@@ -1081,7 +1081,7 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
         set_list = set_list[-next_ex.base_sets:]
     if set_list:
         for i in range(next_ex.base_sets):
-            f"----------------------------------------\n"
+            prev_sets +=f"----------------------------------------\n"
             if len(set_list) > i:
                 prev_sets += (
                     f"<strong>{set_list[i].updated.strftime('%d-%m')}"
