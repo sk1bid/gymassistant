@@ -1149,6 +1149,7 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
                               f"🧮: {current_sets[i].repetitions} повтр. {reps_factor}\n</strong>")
 
     else:
+        prev_sets = "----------------------------------------\n<strong>Результаты не обнаружены</strong>\n"
     max_weight = await orm_get_exercise_max_weight(session, user_id, next_ex.id)
     text = (
         f"Упражнение: <strong>{next_ex.name}</strong>\n\n"
