@@ -59,6 +59,7 @@ class UserExercises(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey('user.user_id'))
     name: Mapped[str] = mapped_column(String())
     description: Mapped[str] = mapped_column(Text)
+    circle_training: Mapped[bool] = mapped_column(Boolean(), default=False)
 
     exercise_category: Mapped['ExerciseCategory'] = relationship(backref='user_exercises', lazy='select')
     user: Mapped['User'] = relationship(backref='user_exercises', lazy='select')
