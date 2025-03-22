@@ -40,9 +40,8 @@ from database.orm_query import (
     orm_get_categories,
     orm_delete_user_exercise,
     orm_add_training_session,
-    orm_get_program, orm_get_exercise_max_record, orm_get_exercise_max_weight,
-    orm_get_sets_for_exercise_in_previous_session,
-)
+    orm_get_program, orm_get_exercise_max_weight,
+    orm_get_sets_for_exercise_in_previous_session, )
 from handlers.menu_processing import get_menu_content
 from kbds.inline import MenuCallBack, get_url_btns, error_btns, get_callback_btns
 from kbds.reply import get_keyboard
@@ -1075,32 +1074,28 @@ async def process_current_block(
 
 
 async def first_result_message(session: AsyncSession, user_id, next_ex):
-    set_list = await orm_get_sets_for_exercise_in_previous_session(session, user_id, next_ex.id)
+    set_list = await orm_get_sets_for_exercise_in_previous_session(session, next_ex.id)
     prev_sets = ""
     if len(set_list) > next_ex.base_sets:
         set_list = set_list[-next_ex.base_sets:]
     if set_list:
         for i in range(next_ex.base_sets):
-            prev_sets +=f"----------------------------------------\n"
+            prev_sets += f"----------------------------------------\n"
             if len(set_list) > i:
                 prev_sets += (
                     f"<strong>{set_list[i].updated.strftime('%d-%m')}"
                     f" 🦾: {set_list[i].weight} кг/блок,"
                     f" 🧮: {set_list[i].repetitions} раз\n</strong>"
-                    f"<strong>Мощность: {int(set_list[i].weight * set_list[i].repetitions)} кг/блок</strong>\n"
                 )
             else:
                 prev_sets += f"<strong>Подход {i + 1}: еще не выполнен\n</strong>"
 
-    max_power = await orm_get_exercise_max_record(session, user_id, next_ex.id)
-
     if prev_sets == "":
-        prev_sets = "<strong>Результаты не обнаружены</strong>\n"
+        prev_sets = "----------------------------------------\n<strong>Результаты не обнаружены</strong>\n"
 
     max_weight = await orm_get_exercise_max_weight(session, user_id, next_ex.id)
     text = (
         f"Упражнение: <strong>{next_ex.name}</strong>\n\n"
-        f"Рекорд мощности(повторения*вес):\n<strong>{int(max_power)} кг/блок за подход</strong>\n"
         f"Рекорд поднятого веса:\n<strong>{int(max_weight)} кг/блок за подход</strong>\n\n"
         f"Результаты прошлой тренировки:\n{prev_sets}"
         f"----------------------------------------\n\n"
@@ -1110,12 +1105,13 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
 
 
 async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_index, session_id):
-    current_sets = await orm_get_sets_by_session(session, next_ex.id, session_id)
-    set_list = await orm_get_sets_for_exercise_in_previous_session(session, user_id, next_ex.id)
+    current_sets = await orm_get_sets_by_session(session, next_ex.id, session_id)  # получаем данные текущей тренировки
+    set_list = await orm_get_sets_for_exercise_in_previous_session(session,
+                                                                   next_ex.id)  # получаем данные предыдущей тренировки
     if len(set_list) > next_ex.base_sets:
         set_list = set_list[-next_ex.base_sets:]
     prev_sets = ""
-    if current_sets:
+    if set_list:
         for i in range(next_ex.base_sets):
             flag = False
             prev_sets += f"----------------------------------------\n"
@@ -1124,11 +1120,9 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
                     f"{set_list[i].updated.strftime('%d-%m')}"
                     f" 🦾: {set_list[i].weight} кг/блок,"
                     f" 🧮: {set_list[i].repetitions} раз\n"
-                    f"Мощность: {int(set_list[i].weight * set_list[i].repetitions)} кг/блок\n"
                 )
             elif len(current_sets) > len(set_list) and len(current_sets) > i:
-                prev_sets += (f"<strong>Подход {i + 1} 👇  "
-                              f"Мощность: {int(current_sets[i].weight * current_sets[i].repetitions)}\n"
+                prev_sets += (f"<strong>Подход {i + 1} 👇\n"
                               f"🦾: {current_sets[i].weight} кг/блок\n"
                               f"🧮: {current_sets[i].repetitions} повтр.\n</strong>")
                 flag = True
@@ -1150,30 +1144,17 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
                     reps_factor = "👌"
                 else:
                     reps_factor = f"📉{current_sets[i].repetitions - set_list[i].repetitions}"
-
-                if int(current_sets[i].weight * current_sets[i].repetitions) > int(
-                        set_list[i].weight * set_list[i].repetitions):
-                    power_factor = f"💹+{int(current_sets[i].weight * current_sets[i].repetitions) - int(set_list[i].weight * set_list[i].repetitions)}"
-                elif int(current_sets[i].weight * current_sets[i].repetitions) == set_list[i].weight * int(
-                        set_list[i].repetitions):
-                    power_factor = "👌"
-                else:
-                    power_factor = f"📉{int(current_sets[i].weight * current_sets[i].repetitions) - int(set_list[i].weight * set_list[i].repetitions)}"
-                prev_sets += (f"<strong>Подход {i + 1} 👇  "
-                              f"Мощность: {int(current_sets[i].weight * current_sets[i].repetitions)} {power_factor}\n"
+                prev_sets += (f"<strong>Подход {i + 1} 👇\n"
                               f"🦾: {current_sets[i].weight} кг/блок {weight_factor}\n"
                               f"🧮: {current_sets[i].repetitions} повтр. {reps_factor}\n</strong>")
 
     else:
-        prev_sets = "<strong>Результаты не обнаружены</strong>\n"
-    max_power = await orm_get_exercise_max_record(session, user_id, next_ex.id)
     max_weight = await orm_get_exercise_max_weight(session, user_id, next_ex.id)
     text = (
         f"Упражнение: <strong>{next_ex.name}</strong>\n\n"
-        f"Рекорд мощности(повторения*вес):\n<strong>{int(max_power)} кг/блок за подход</strong>\n"
         f"Рекорд поднятого веса:\n<strong>{int(max_weight)} кг/блок за подход</strong>\n\n"
         f"Результаты прошлой тренировки:\n{prev_sets}"
-        f"----------------------------------------\n\n"
+        f"----------------------------------------\n"
         f"Подход <strong>{set_index} из {next_ex.base_sets}</strong> \nВведите вес снаряда:"
     )
     return text
@@ -1704,7 +1685,7 @@ async def process_reps_input(
     accept_message = await message.answer(f"<strong>{user_exercise.name}</strong>\n\n"
                                           f"Результат:"
                                           f"\nВес: <strong>{weight} кг/блок;</strong>"
-                                          f" Повторения:<strong>{reps}</strong>\n\n",
+                                          f" Повторения: <strong>{reps}</strong>\n\n",
                                           reply_markup=get_keyboard("✏️ Изменить",
                                                                     "✅ Продолжить тренировку"))
     await state.update_data(accept_message_id=accept_message.message_id)
