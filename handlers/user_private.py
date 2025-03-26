@@ -1074,7 +1074,7 @@ async def process_current_block(
 
 
 async def first_result_message(session: AsyncSession, user_id, next_ex):
-    set_list = await orm_get_sets_for_exercise_in_previous_session(session, next_ex.id)
+    set_list = await orm_get_sets_for_exercise_in_previous_session(session, next_ex.id, 0)
     prev_sets = ""
     if len(set_list) > next_ex.base_sets:
         set_list = set_list[-next_ex.base_sets:]
@@ -1107,7 +1107,7 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
 async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_index, session_id):
     current_sets = await orm_get_sets_by_session(session, next_ex.id, session_id)  # получаем данные текущей тренировки
     set_list = await orm_get_sets_for_exercise_in_previous_session(session,
-                                                                   next_ex.id)  # получаем данные предыдущей тренировки
+                                                                   next_ex.id, 1)  # получаем данные предыдущей тренировки
     if len(set_list) > next_ex.base_sets:
         set_list = set_list[-next_ex.base_sets:]
     prev_sets = ""
