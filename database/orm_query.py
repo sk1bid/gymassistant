@@ -677,35 +677,37 @@ async def orm_get_exercise_max_weight(
 
 
 async def orm_get_sets_for_exercise_in_previous_session(
-        session: AsyncSession, exercise_id: int):
-        """
-        Получает подходы для заданного упражнения из последней тренировочной сессии,
-        в которой это упражнение было выполнено.
+        session: AsyncSession, exercise_id: int, param: int
+):
+    """
+    Получает подходы для заданного упражнения из предыдущей тренировочной сессии,
+    в которой это упражнение было выполнено (пропуская самую свежую).
 
-        :param session: Асинхронная сессия SQLAlchemy
-        :param exercise_id: ID упражнения
-        :return: Список объектов Set для данного упражнения из последней тренировочной сессии
-        """
-        # Подзапрос для поиска ID последней тренировочной сессии с заданным упражнением
-        subquery = (
-            select(TrainingSession.id)
-            .join(Set, TrainingSession.id == Set.training_session_id)
-            .where(Set.exercise_id == exercise_id)
-            .order_by(TrainingSession.date.desc())
-            .limit(1)
-            .scalar_subquery()
-        )
+    :param param: параметр отвечающий за пропуск самой свежей сессии
+    :param session: Асинхронная сессия SQLAlchemy
+    :param exercise_id: ID упражнения
+    :return: Список объектов Set для данного упражнения из предыдущей тренировочной сессии
+    """
 
-        # Основной запрос для получения всех подходов из найденной сессии для заданного упражнения
-        query = select(Set).where(
-            Set.training_session_id == subquery,
-            Set.exercise_id == exercise_id
-        )
+    # Подзапрос для поиска ID предыдущей тренировочной сессии с заданным упражнением
+    subquery = (
+        select(TrainingSession.id)
+        .join(Set, TrainingSession.id == Set.training_session_id)
+        .where(Set.exercise_id == exercise_id)
+        .order_by(TrainingSession.date.desc())
+        .limit(1)
+        .offset(param)
+        .scalar_subquery()
+    )
 
-        # Выполнение запроса и получение результатов
-        result = await session.execute(query)
-        sets = result.scalars().all()
-        return sets
+    query = select(Set).where(
+        Set.training_session_id == subquery,
+        Set.exercise_id == exercise_id
+    )
+
+    result = await session.execute(query)
+    return result.scalars().all()
+
 
 """
 Предустановленные упражнения
