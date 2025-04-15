@@ -1060,6 +1060,7 @@ async def process_current_block(
             circuit_ex_idx=0,
             circuit_round=1,
         )
+        logging.info(f"go to circuit")
         await start_circuit_block(message, state, session, ex_objs)
     else:
         await state.update_data(
@@ -1070,11 +1071,16 @@ async def process_current_block(
             standard_ex_idx=0,
             set_index=1,
         )
+        logging.info(f"go to standart")
         await start_standard_block(message, state, session, ex_objs)
 
 
 async def first_result_message(session: AsyncSession, user_id, next_ex):
-    set_list = await orm_get_sets_for_exercise_in_previous_session(session, next_ex.id, 0)
+    set_list = await orm_get_sets_for_exercise_in_previous_session(
+        session,
+        next_ex.id,
+        current_session_id=None  # Текущая сессия ещё не создана
+    )
     prev_sets = ""
     if len(set_list) > next_ex.base_sets:
         set_list = set_list[-next_ex.base_sets:]
@@ -1101,13 +1107,17 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
         f"----------------------------------------\n\n"
         f"Подход <strong>1 из {next_ex.base_sets}</strong> \nВведите вес снаряда:"
     )
+    logging.info(f"frm ex id: {next_ex.name}")
     return text
 
 
 async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_index, session_id):
     current_sets = await orm_get_sets_by_session(session, next_ex.id, session_id)  # получаем данные текущей тренировки
-    set_list = await orm_get_sets_for_exercise_in_previous_session(session,
-                                                                   next_ex.id, 1)  # получаем данные предыдущей тренировки
+    set_list = await orm_get_sets_for_exercise_in_previous_session(
+        session,
+        next_ex.id,
+        current_session_id=session_id  # Исключаем текущую сессию из поиска
+    )
     if len(set_list) > next_ex.base_sets:
         set_list = set_list[-next_ex.base_sets:]
     prev_sets = ""
@@ -1158,6 +1168,7 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
         f"----------------------------------------\n"
         f"Подход <strong>{set_index} из {next_ex.base_sets}</strong> \nВведите вес снаряда:"
     )
+    logging.info(f"rmas ex id: {next_ex.name}, session_id: {session_id}")
     return text
 
 
@@ -1289,7 +1300,6 @@ async def start_circuit_block(
     data = await state.get_data()
     bot_msg_id = data.get("bot_message_id")
     user_id = data.get("user_id")
-    session_id = data.get("training_session_id")
     if not ex_objs:
         await message.answer("Нет упражнений в этом блоке.")
         await move_to_next_block_in_day(message, state, session)
