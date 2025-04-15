@@ -677,26 +677,24 @@ async def orm_get_exercise_max_weight(
 
 
 async def orm_get_sets_for_exercise_in_previous_session(
-        session: AsyncSession, exercise_id: int, param: int
+    session: AsyncSession,
+    exercise_id: int,
+    current_session_id: int | None = None
 ):
     """
-    Получает подходы для заданного упражнения из предыдущей тренировочной сессии,
-    в которой это упражнение было выполнено (пропуская самую свежую).
-
-    :param param: параметр отвечающий за пропуск самой свежей сессии
-    :param session: Асинхронная сессия SQLAlchemy
-    :param exercise_id: ID упражнения
-    :return: Список объектов Set для данного упражнения из предыдущей тренировочной сессии
+    Получает подходы из последней завершённой сессии, исключая текущую (если указана).
     """
 
-    # Подзапрос для поиска ID предыдущей тренировочной сессии с заданным упражнением
     subquery = (
         select(TrainingSession.id)
         .join(Set, TrainingSession.id == Set.training_session_id)
-        .where(Set.exercise_id == exercise_id)
+        .where(
+            Set.exercise_id == exercise_id,
+            # Исключаем текущую сессию, если она передана
+            TrainingSession.id != current_session_id if current_session_id else True
+        )
         .order_by(TrainingSession.date.desc())
         .limit(1)
-        .offset(param)
         .scalar_subquery()
     )
 
