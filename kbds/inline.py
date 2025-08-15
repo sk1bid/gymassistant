@@ -9,7 +9,7 @@ from utils.separator import get_action_part
 from utils.temporary_storage import store_data_temporarily
 
 WEEK_DAYS = [calendar.day_abbr[i] for i in range(7)]
-WEEK_DAYS_RU = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+WEEK_DAYS_RU = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
 MONTHS = [(i, calendar.month_name[i]) for i in range(1, 13)]
 
