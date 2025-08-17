@@ -439,25 +439,25 @@ def get_program_btns(*, level: int, sizes: tuple[int] = (2, 1), user_program_id:
     Возвращает клавиатуру настроек программы.
     """
     keyboard = InlineKeyboardBuilder()
-    keyboard.add(
-        InlineKeyboardButton(
-            text="⬅️ Назад",
-            callback_data=MenuCallBack(level=level - 1, action='program').pack()
-        )
-    )
-    keyboard.add(
-        InlineKeyboardButton(
-            text='⚙️ Настройки',
-            callback_data=MenuCallBack(level=level + 1, action='prg_stg', program_id=user_program_id).pack()
-        )
-    )
-    keyboard.add(
+
+    keyboard.row(
         InlineKeyboardButton(
             text='🔎 Тренировочные дни',
             callback_data=MenuCallBack(level=level + 1, action='training_day', program_id=user_program_id).pack()
         )
     )
-    return keyboard.adjust(*sizes).as_markup()
+    back_button =  InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data=MenuCallBack(level=level - 1, action='program').pack()
+        )
+    
+    stgs_button = InlineKeyboardButton(
+            text='⚙️ Настройки',
+            callback_data=MenuCallBack(level=level + 1, action='prg_stg', program_id=user_program_id).pack()
+        )
+    
+    keyboard.row(back_button, stgs_button)
+    return keyboard.as_markup()
 
 
 def get_program_stgs_btns(
