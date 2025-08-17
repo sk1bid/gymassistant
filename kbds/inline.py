@@ -10,6 +10,7 @@ from utils.temporary_storage import store_data_temporarily
 
 WEEK_DAYS = [calendar.day_abbr[i] for i in range(7)]
 WEEK_DAYS_RU = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+WEEK_DAYS_RU_FULL = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
 
 MONTHS = [(i, calendar.month_name[i]) for i in range(1, 13)]
 
@@ -320,7 +321,7 @@ def get_schedule_btns(
                     day_date = date(year, month, day)
                     day_name = '🔘' if day_date == today else str(day)
                     day_of_week_index = day_date.weekday()
-                    day_of_week_ru = WEEK_DAYS_RU[day_of_week_index].strip().lower()
+                    day_of_week_ru = WEEK_DAYS_RU_FULL[day_of_week_index].strip().lower()
 
                     day_training_day_id = day_of_week_to_id.get(day_of_week_ru)
                     if day_training_day_id is None:
