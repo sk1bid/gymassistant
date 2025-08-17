@@ -157,10 +157,9 @@ async def profile(session: AsyncSession, level: int, action: str, user_id: int):
     :return:
     """
     try:
-        banner, user = await gather(
-            orm_get_banner(session, action),
-            orm_get_user_by_id(session, user_id)
-        )
+        banner  = await orm_get_banner(session, action)
+            
+        user = await orm_get_user_by_id(session, user_id)
         banner_image = InputMediaPhoto(media=banner.image,
                                        caption=f"<strong>{banner.description}:\n {user.name} — вес:"
                                                f" {user.weight}</strong>")
@@ -187,10 +186,9 @@ async def training_results(session: AsyncSession, level: int, user_id: int, page
     """
     try:
 
-        banner, user = await asyncio.gather(
-            orm_get_banner(session, "training_stats"),
-            orm_get_user_by_id(session, user_id)
-        )
+        banner = await orm_get_banner(session, "training_stats")
+        user = await orm_get_user_by_id(session, user_id)
+        
 
         all_sessions = await orm_get_training_sessions_by_user(session, user_id)
 
@@ -361,10 +359,10 @@ async def schedule(session: AsyncSession, level: int, action: str, training_day_
     :return:
     """
     try:
-        banner, user_data = await gather(
-            orm_get_banner(session, "schedule"),
-            orm_get_user_by_id(session, user_id)
-        )
+        banner = await orm_get_banner(session, "schedule")
+            
+        user_data = await orm_get_user_by_id(session, user_id)
+        
         user_program = user_data.actual_program_id
         if user_program:
             today = date.today()
@@ -486,10 +484,9 @@ async def programs_catalog(session: AsyncSession, level: int, action: str, user_
     :return:
     """
     try:
-        banner, programs = await gather(
-            orm_get_banner(session, action),
-            orm_get_programs(session, user_id=user_id)
-        )
+        banner = await orm_get_banner(session, action)
+            
+        programs = await    orm_get_programs(session, user_id=user_id)
         user_data = await orm_get_user_by_id(session, user_id)
         banner_image = InputMediaPhoto(media=banner.image, caption=banner.description)
 
@@ -592,10 +589,8 @@ async def training_days(session, level: int, training_program_id: int, page: int
     :return:
     """
     try:
-        user_program, training_days_list = await gather(
-            orm_get_program(session, training_program_id),
-            orm_get_training_days(session, training_program_id)
-        )
+        user_program = await orm_get_program(session, training_program_id)
+        training_days_list = await orm_get_training_days(session, training_program_id)
         banner = await orm_get_banner(session, "user_program")
 
         paginator = Paginator(training_days_list, page=page)
