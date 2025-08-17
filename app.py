@@ -10,7 +10,7 @@ from aiogram.enums import ParseMode
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from dotenv import find_dotenv, load_dotenv
 
-# твои модули
+
 from middlewares.db import DataBaseSession
 from database.engine import create_db, drop_db, session_maker
 from handlers.user_private import user_private_router
@@ -22,8 +22,8 @@ load_dotenv(find_dotenv())
 logging.basicConfig(level=logging.INFO)
 
 TOKEN = os.getenv("TOKEN")
-WEBHOOK_HOST = os.getenv("WEBHOOK_HOST")   # https://sk1bid.ru
-WEBHOOK_PATH = os.getenv("WEBHOOK_PATH")   # /tg/webhook
+WEBHOOK_HOST = os.getenv("WEBHOOK_HOST")
+WEBHOOK_PATH = os.getenv("WEBHOOK_PATH")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 PORT = int(os.getenv("PORT", 8080))
 
@@ -44,7 +44,6 @@ async def on_startup(bot: Bot):
         await drop_db()
     await create_db()
 
-    # Устанавливаем вебхук в Telegram
     await bot.set_webhook(
         url=WEBHOOK_URL,
         secret_token=WEBHOOK_SECRET,
@@ -52,7 +51,6 @@ async def on_startup(bot: Bot):
         allowed_updates=dp.resolve_used_update_types(),
     )
 
-    # Уведомим админов
     for user in bot.my_admins_list:
         with contextlib.suppress(Exception):
             await bot.send_message(user, f"/start")
@@ -65,24 +63,20 @@ async def on_shutdown(bot: Bot):
 
 
 async def init_app() -> web.Application:
-    # middleware для базы
+
     dp.update.middleware(DataBaseSession(session_pool=session_maker))
 
-    # хуки жизненного цикла
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
 
-    # aiohttp-приложение
     app = web.Application()
 
-    # регистрируем обработчик Telegram-запросов на /tg/webhook
     SimpleRequestHandler(
         dispatcher=dp,
         bot=bot,
         secret_token=WEBHOOK_SECRET
     ).register(app, path=WEBHOOK_PATH)
 
-    # подключаем aiogram к lifecycle aiohttp
     setup_application(app, dp, bot=bot)
 
     return app
