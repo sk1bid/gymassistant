@@ -1,6 +1,7 @@
 # Игнорировать файл .env
 .env
 /.venv/
+/venv
 # Игнорировать директории __pycache__
 __pygit cache__/
 
