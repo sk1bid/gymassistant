@@ -14,6 +14,14 @@ from database.models import (
     UserExercises, TrainingSession
 )
 
+async def _one(session: AsyncSession, stmt):
+    res = await session.execute(stmt)
+    return res.unique().scalars().first()
+
+async def _all(session: AsyncSession, stmt):
+    res = await session.execute(stmt)
+    return res.scalars().all() 
+
 """
 Работа с изображениями
 """
@@ -57,9 +65,8 @@ async def orm_get_banner(session: AsyncSession, page: str):
     :param page:
     :return:
     """
-    query = select(Banner).where(Banner.name == page)
-    result = await session.execute(query)
-    return result.scalar()
+    stmt = select(Banner).where(Banner.name == page).limit(1)
+    return await _one(session, stmt)
 
 
 async def orm_get_info_pages(session: AsyncSession):
@@ -129,10 +136,8 @@ async def orm_get_program(session: AsyncSession, program_id: int):
     :param program_id:
     :return:
     """
-    query = select(TrainingProgram).where(TrainingProgram.id == program_id)
-    result = await session.execute(query)
-    return result.scalar()
-
+    stmt = select(TrainingProgram).where(TrainingProgram.id == program_id).limit(1)
+    return await _one(session, stmt)
 
 async def orm_delete_program(session: AsyncSession, program_id: int):
     """
@@ -174,9 +179,8 @@ async def orm_get_training_day(session: AsyncSession, training_day_id: int):
     :param training_day_id:
     :return:
     """
-    query = select(TrainingDay).where(TrainingDay.id == training_day_id)
-    result = await session.execute(query)
-    return result.scalar()
+    stmt = select(TrainingDay).where(TrainingDay.id == training_day_id).limit(1)
+    return await _one(session, stmt)
 
 
 async def orm_get_training_days(session: AsyncSession, training_program_id: int):
@@ -308,9 +312,8 @@ async def orm_get_exercise(session: AsyncSession, exercise_id: int):
     :param exercise_id:
     :return:
     """
-    query = select(Exercise).where(Exercise.id == exercise_id)
-    result = await session.execute(query)
-    return result.scalar()
+    stmt = select(Exercise).where(Exercise.id == exercise_id).limit(1)
+    return await _one(session, stmt)
 
 
 async def orm_update_exercise(session: AsyncSession, exercise_id: int, data: dict):
@@ -521,9 +524,8 @@ async def orm_delete_exercise_set(session: AsyncSession, exercise_set_id: int):
     :return:
     """
     from database.models import ExerciseSet
-    query = delete(ExerciseSet).where(ExerciseSet.id == exercise_set_id)
-    await session.execute(query)
-    await session.commit()
+    stmt = select(ExerciseSet).where(ExerciseSet.id == exercise_set_id).limit(1)
+    return await _one(session, stmt)
 
 
 async def orm_update_exercise_set(session: AsyncSession, exercise_set_id: int, reps: int):
@@ -585,9 +587,8 @@ async def orm_get_set(session: AsyncSession, set_id: int):
     :param set_id:
     :return:
     """
-    query = select(Set).where(Set.id == set_id)
-    result = await session.execute(query)
-    return result.scalar()
+    stmt = select(Set).where(Set.id == set_id).limit(1)
+    return await _one(session, stmt)
 
 
 async def orm_get_sets_by_session(session: AsyncSession, exercise_id: int, training_session_id: str):
@@ -650,8 +651,7 @@ async def orm_get_exercise_max_record(
             Exercise.id == exercise_id
         )
     )
-    result = await session.execute(stmt)
-    return result.scalar()
+    return await _one(session, stmt)
 
 
 async def orm_get_exercise_max_weight(
@@ -672,8 +672,7 @@ async def orm_get_exercise_max_weight(
             Exercise.id == exercise_id
         )
     )
-    result = await session.execute(stmt)
-    return result.scalar()
+    return await _one(session, stmt)
 
 
 async def orm_get_sets_for_exercise_in_previous_session(
@@ -735,9 +734,8 @@ async def orm_get_admin_exercise(session: AsyncSession, admin_exercise_id: int):
     :param admin_exercise_id:
     :return:
     """
-    query = select(AdminExercises).where(AdminExercises.id == admin_exercise_id)
-    result = await session.execute(query)
-    return result.scalar()
+    stmt = select(AdminExercises).where(AdminExercises.id == admin_exercise_id).limit(1)
+    return await _one(session, stmt)
 
 
 async def orm_get_admin_exercises(session: AsyncSession):
@@ -830,9 +828,8 @@ async def orm_get_user_exercise(session: AsyncSession, user_exercise_id: int):
     :param user_exercise_id:
     :return:
     """
-    query = select(UserExercises).where(UserExercises.id == user_exercise_id)
-    result = await session.execute(query)
-    return result.scalar()
+    stmt = select(UserExercises).where(UserExercises.id == user_exercise_id).limit(1)
+    return await _one(session, stmt)
 
 
 async def orm_get_user_exercises(session: AsyncSession, user_id: int):
@@ -944,12 +941,8 @@ async def orm_get_category(session: AsyncSession, category_id: int):
     :param category_id:
     :return:
     """
-    query = (
-        select(ExerciseCategory).where(ExerciseCategory.id == category_id)
-    )
-    result = await session.execute(query)
-    return result.scalar()
-
+    stmt = select(ExerciseCategory).where(ExerciseCategory.id == category_id).limit(1)
+    return await _one(session, stmt)
 
 async def orm_create_categories(session: AsyncSession, categories: list):
     """
@@ -998,10 +991,8 @@ async def orm_get_training_session(session: AsyncSession, session_id: str):
     Получаем тренировку по её UUID
     """
     from database.models import TrainingSession
-    query = select(TrainingSession).where(TrainingSession.id == session_id)
-    result = await session.execute(query)
-    return result.scalar()
-
+    stmt = select(TrainingSession).where(TrainingSession.id == session_id).limit(1)
+    return await _one(session, stmt)
 
 async def orm_get_training_sessions_by_user(session: AsyncSession, user_id: int):
     """
@@ -1117,10 +1108,8 @@ async def orm_get_user_by_id(session: AsyncSession, user_id: int):
     :param user_id: Telegram ID
     :return:
     """
-    result = await session.execute(
-        select(User).where(User.user_id == user_id)
-    )
-    return result.scalars().first()
+    stmt = select(User).where(User.user_id == user_id).limit(1)
+    return await _one(session, stmt)
 
 
 """
