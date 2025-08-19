@@ -1551,7 +1551,7 @@ def get_exercise_settings_btns(
         action: str,
         program_id: int,
         user_exercise: str,
-        base_ex_sets: list,
+        base_ex_sets: int,
         page: int,
         exercise_id: int | None,
         training_day_id: int,
@@ -1594,24 +1594,16 @@ def get_exercise_settings_btns(
         callback_data=back_callback
     )
 
-    for index, exercise_set in enumerate(base_ex_sets, 1):
-        reps_button = InlineKeyboardButton(
-            text=f"Reps: {exercise_set.reps}",
-            callback_data=EMPTY_CALLBACK)
+    for index in range(1, base_ex_sets+1):
+        
         sets_button = InlineKeyboardButton(
             text=f"Подход {index}",
             callback_data=EMPTY_CALLBACK)
 
-        rep_increase_1 = incr_reduce_sets_reps(level, page, action, exercise_id, training_day_id, program_id,
-                                               1, "➕", "reps", exercise_set.id)
-        rep_reduce_1 = incr_reduce_sets_reps(level, page, action, exercise_id, training_day_id, program_id,
-                                             1, "➖", "reps", exercise_set.id)
-        keyboard.row(sets_button, reps_button, rep_reduce_1, rep_increase_1)
+        
+        keyboard.row(sets_button)
 
-    set_amount = InlineKeyboardButton(
-        text=f"Sets: {len(base_ex_sets)}",
-        callback_data=EMPTY_CALLBACK)
-    keyboard.row(back_button, set_amount, set_reduce_1, set_increase_1)
+    keyboard.row(back_button, set_reduce_1, set_increase_1)
     return keyboard.as_markup()
 
 
