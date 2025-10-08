@@ -15,38 +15,59 @@ jobs:
       packages: write
 
     steps:
+      # 🧩 1. Забираем код
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 🪣 2. Логинимся в GHCR
       - name: Log in to GHCR
         run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Build Docker image
+      # 🛠️ 3. Собираем и пушим Docker-образ с уникальным тегом (commit SHA)
+      - name: Build and push Docker image
+        env:
+          REPO: ghcr.io/${{ github.repository }}
         run: |
-          TAG=$( [ "${{ github.ref_name }}" = "main" ] && echo "prod" || echo "dev" )
-          docker build -t ghcr.io/${{ github.repository }}:$TAG .
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            TAG="prod-$SHORT_SHA"
+          else
+            TAG="dev-$SHORT_SHA"
+          fi
 
-      - name: Push image to GHCR
-        run: |
-          TAG=$( [ "${{ github.ref_name }}" = "main" ] && echo "prod" || echo "dev" )
-          docker push ghcr.io/${{ github.repository }}:$TAG
+          echo "🔨 Building image: $REPO:$TAG"
+          docker build -t $REPO:$TAG .
 
+          echo "📦 Pushing image to GHCR..."
+          docker push $REPO:$TAG
+
+          # Сохраняем тег для следующего шага
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
+      # 🚀 4. Деплой на сервер через SSH
       - name: Deploy to K3s over SSH
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_KEY }}
-          port: 2222 
+          port: 2222
           script: |
-            TAG=$( [ "${{ github.ref_name }}" = "main" ] && echo "prod" || echo "dev" )
-            NAMESPACE="gym-$TAG"
+            REPO="ghcr.io/${{ github.repository }}"
+            TAG=${{ env.TAG }}
+            NAMESPACE=$( [ "${{ github.ref_name }}" = "main" ] && echo "gym-prod" || echo "gym-dev" )
 
-            echo "🌀 Updating bot image in namespace $NAMESPACE"
-            kubectl set image deploy/gym-bot aiogram-bot=ghcr.io/${{ github.repository }}:$TAG -n $NAMESPACE || true
+            echo "🌀 Deploying image $REPO:$TAG to namespace $NAMESPACE"
 
-            echo "✅ Restarting bot"
+            # Обновляем образ в деплойменте
+            kubectl set image deploy/gym-bot aiogram-bot=$REPO:$TAG -n $NAMESPACE
+
+            # Перезапускаем бота
+            echo "✅ Restarting bot..."
             kubectl rollout restart deploy/gym-bot -n $NAMESPACE
 
-            echo "🔍 Checking rollout status..."
+            # Проверяем статус
+            echo "🔍 Waiting for rollout to complete..."
             kubectl rollout status deploy/gym-bot -n $NAMESPACE
+
+            echo "🎉 Deployment complete!"
