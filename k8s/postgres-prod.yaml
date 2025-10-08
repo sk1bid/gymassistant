@@ -1,22 +1,10 @@
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: postgres-pvc
-  namespace: gym-prod
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 5Gi
-  storageClassName: local-path
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: postgres
   namespace: gym-prod
 spec:
+  replicas: 1
   selector:
     matchLabels:
       app: postgres
@@ -29,30 +17,21 @@ spec:
       - name: postgres
         image: postgres:16
         ports:
-        - containerPort: 5432
+          - containerPort: 5432
         env:
-        - name: POSTGRES_USER
-          valueFrom:
-            secretKeyRef:
-              name: bot-secrets
-              key: POSTGRES_USER
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: bot-secrets
-              key: POSTGRES_PASSWORD
-        - name: POSTGRES_DB
-          valueFrom:
-            secretKeyRef:
-              name: bot-secrets
-              key: POSTGRES_DB
+          - name: POSTGRES_DB
+            valueFrom: { secretKeyRef: { name: bot-secrets, key: POSTGRES_DB } }
+          - name: POSTGRES_USER
+            valueFrom: { secretKeyRef: { name: bot-secrets, key: POSTGRES_USER } }
+          - name: POSTGRES_PASSWORD
+            valueFrom: { secretKeyRef: { name: bot-secrets, key: POSTGRES_PASSWORD } }
         volumeMounts:
-        - name: pgdata
-          mountPath: /var/lib/postgresql/data
+          - name: postgres-data
+            mountPath: /var/lib/postgresql/data
       volumes:
-      - name: pgdata
-        persistentVolumeClaim:
-          claimName: postgres-pvc
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -63,5 +42,6 @@ spec:
   selector:
     app: postgres
   ports:
-  - port: 5432
-    targetPort: 5432
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP
