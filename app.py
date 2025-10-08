@@ -11,6 +11,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from dotenv import find_dotenv, load_dotenv
 
 
+from database.orm_query import orm_get_banner
 from middlewares.db import DataBaseSession
 from database.engine import create_db, drop_db, session_maker
 from handlers.user_private import user_private_router
@@ -44,7 +45,10 @@ async def on_startup(bot: Bot):
     if run_param:
         await drop_db()
     await create_db()
-
+    global error_pic
+    async with session_maker() as session:
+        error_pic = await orm_get_banner(session, "error")
+        
     async with session_maker() as session:
         await load_banners_from_folder(bot, session)
     await bot.set_webhook(
