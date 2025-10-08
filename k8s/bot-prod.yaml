@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gym-bot
+  namespace: gym-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gym-bot
+  template:
+    metadata:
+      labels:
+        app: gym-bot
+    spec:
+      containers:
+      - name: aiogram-bot
+        image: ghcr.io/sk1bid/gymassistant:prod
+        ports:
+        - containerPort: 8080
+        env:
+        - name: TOKEN
+          valueFrom: { secretKeyRef: { name: bot-secrets, key: TOKEN } }
+        - name: WEBHOOK_HOST
+          valueFrom: { secretKeyRef: { name: bot-secrets, key: WEBHOOK_HOST } }
+        - name: WEBHOOK_PATH
+          valueFrom: { secretKeyRef: { name: bot-secrets, key: WEBHOOK_PATH } }
+        - name: WEBHOOK_SECRET
+          valueFrom: { secretKeyRef: { name: bot-secrets, key: WEBHOOK_SECRET } }
+        - name: POSTGRES_USER
+          valueFrom: { secretKeyRef: { name: bot-secrets, key: POSTGRES_USER } }
+        - name: POSTGRES_PASSWORD
+          valueFrom: { secretKeyRef: { name: bot-secrets, key: POSTGRES_PASSWORD } }
+        - name: POSTGRES_DB
+          valueFrom: { secretKeyRef: { name: bot-secrets, key: POSTGRES_DB } }
+        - name: DB_HOST
+          value: "postgres"
+        - name: DB_PORT
+          value: "5432"
+        - name: PORT
+          value: "8080"
+      imagePullSecrets:
+        - name: ghcr-auth
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gym-bot
+  namespace: gym-prod
+spec:
+  selector:
+    app: gym-bot
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 30080
+  type: NodePort

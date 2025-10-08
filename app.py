@@ -16,6 +16,7 @@ from database.engine import create_db, drop_db, session_maker
 from handlers.user_private import user_private_router
 from handlers.admin_private import admin_router
 from handlers.user_group import user_group_router
+from utils.load_banners import load_banners_from_folder
 
 load_dotenv(find_dotenv())
 
@@ -44,6 +45,8 @@ async def on_startup(bot: Bot):
         await drop_db()
     await create_db()
 
+    async with session_maker() as session:
+        await load_banners_from_folder(bot, session)
     await bot.set_webhook(
         url=WEBHOOK_URL,
         secret_token=WEBHOOK_SECRET,

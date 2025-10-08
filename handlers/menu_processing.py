@@ -128,18 +128,33 @@ async def main_menu(session: AsyncSession):
     """
     try:
         banner = await orm_get_banner(session, "main")
-        banner_image = InputMediaPhoto(media=banner.image,
-                                       caption=f"<strong>{banner.description}</strong>")
+
+        if not banner or not banner.image:
+            logging.warning("Баннеры не загружены или отсутствует поле image")
+
+            error_image = InputMediaPhoto(
+                media="https://postimg.cc/Ty7d15kq",
+                caption="❗️Баннеры ещё не загружены. Обратитесь к администратору."
+            )
+            kbds = error_btns()
+            return error_image, kbds
+
+        banner_image = InputMediaPhoto(
+            media=banner.image,
+            caption=f"<strong>{banner.description or ''}</strong>"
+        )
         kbds = get_user_main_btns()
         return banner_image, kbds
+
     except Exception as e:
         logging.exception(f"Ошибка в main_menu: {e}")
         error_image = InputMediaPhoto(
-            media='https://postimg.cc/Ty7d15kq',
-            caption="Ошибка при загрузке main_menu"
+            media="https://postimg.cc/Ty7d15kq",
+            caption="⚠️ Ошибка при загрузке меню."
         )
         kbds = error_btns()
         return error_image, kbds
+
 
 
 """
