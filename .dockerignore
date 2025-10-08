@@ -1,5 +1,7 @@
 .git
-.env
+.env.examle
+.env.dev
+.env.prod
 .venv
 .idea
 __pycache__

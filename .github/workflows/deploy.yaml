@@ -1,0 +1,51 @@
+name: Deploy GymAssistant Bot to K3s
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build Docker image
+        run: |
+          TAG=$( [ "${{ github.ref_name }}" = "main" ] && echo "prod" || echo "dev" )
+          docker build -t ghcr.io/${{ github.repository }}:$TAG .
+
+      - name: Push image to GHCR
+        run: |
+          TAG=$( [ "${{ github.ref_name }}" = "main" ] && echo "prod" || echo "dev" )
+          docker push ghcr.io/${{ github.repository }}:$TAG
+
+      - name: Deploy to K3s over SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            TAG=$( [ "${{ github.ref_name }}" = "main" ] && echo "prod" || echo "dev" )
+            NAMESPACE="gym-$TAG"
+
+            echo "🌀 Updating bot image in namespace $NAMESPACE"
+            kubectl set image deploy/gym-bot aiogram-bot=ghcr.io/${{ github.repository }}:$TAG -n $NAMESPACE || true
+
+            echo "✅ Restarting bot"
+            kubectl rollout restart deploy/gym-bot -n $NAMESPACE
+
+            echo "🔍 Checking rollout status..."
+            kubectl rollout status deploy/gym-bot -n $NAMESPACE
