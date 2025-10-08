@@ -1,6 +1,24 @@
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
 metadata:
-  name: local-path
-provisioner: rancher.io/local-path
-volumeBindingMode: WaitForFirstConsumer
+  name: postgres-pvc
+  namespace: gym-prod
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: local-path
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc-dev
+  namespace: gym-dev
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: local-path
