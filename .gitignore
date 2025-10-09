@@ -1,5 +1,7 @@
 # Игнорировать файл .env
-.env
+.env.example
+.env.dev
+.env.prod
 /.venv/
 /venv
 # Игнорировать директории __pycache__
@@ -9,3 +11,7 @@ __pygit cache__/
 *.pyc
 
 /alembic/
+/migrations/
+
+/.vscode/
+k8s/secrets*.yaml*
