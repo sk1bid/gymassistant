@@ -13,4 +13,4 @@ __pygit cache__/
 /alembic/
 /migrations/
 
-/.vscode/
+/.vscode/k8s/secrets*.yaml*
