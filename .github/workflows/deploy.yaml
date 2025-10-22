@@ -23,25 +23,38 @@ jobs:
       - name: Log in to GHCR
         run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      # 🛠️ 3. Собираем и пушим Docker-образ с уникальным тегом (commit SHA)
+      # 🛠️ 3. Сборка и пуш Docker-образа
       - name: Build and push Docker image
         env:
           REPO: ghcr.io/${{ github.repository }}
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+
           if [ "${{ github.ref_name }}" = "main" ]; then
             TAG="prod-$SHORT_SHA"
+            echo "🔨 Building PROD image: $REPO:$TAG"
+            docker build -t $REPO:$TAG .
+            echo "📦 Pushing $REPO:$TAG..."
+            docker push $REPO:$TAG
+
+            # 👉 Добавляем стабильный тег prod
+            echo "🏷️  Tagging and pushing $REPO:prod..."
+            docker tag $REPO:$TAG $REPO:prod
+            docker push $REPO:prod
+
           else
             TAG="dev-$SHORT_SHA"
+            echo "🔨 Building DEV image: $REPO:$TAG"
+            docker build -t $REPO:$TAG .
+            echo "📦 Pushing $REPO:$TAG..."
+            docker push $REPO:$TAG
+
+            # 👉 Добавляем стабильный тег dev
+            echo "🏷️  Tagging and pushing $REPO:dev..."
+            docker tag $REPO:$TAG $REPO:dev
+            docker push $REPO:dev
           fi
 
-          echo "🔨 Building image: $REPO:$TAG"
-          docker build -t $REPO:$TAG .
-
-          echo "📦 Pushing image to GHCR..."
-          docker push $REPO:$TAG
-
-          # Сохраняем тег для следующего шага
           echo "TAG=$TAG" >> $GITHUB_ENV
 
       # 🚀 4. Деплой на сервер через SSH
