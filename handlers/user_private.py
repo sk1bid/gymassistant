@@ -11,7 +11,6 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardRemove
 from sqlalchemy.ext.asyncio import AsyncSession
 import aiohttp
-import numpy
 
 from database.orm_query import (
     orm_add_user,
