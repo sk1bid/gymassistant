@@ -1118,7 +1118,7 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
                 prev_sets += f"<strong>Подход {i + 1}: еще не выполнен\n</strong>"
         if next_ex.name.lower() in ["жим штанги лежа", "жим лёжа", "bench press"]:
             sequence = [[s.weight, s.repetitions] for s in raw_set_list[-5:]]
-            print(sequence)
+            logging.info(f"{sequence}")
             prediction = await get_press_prediction(sequence)
             if prediction:
                 next_weight = prediction.get("next_weight")
