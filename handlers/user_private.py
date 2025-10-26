@@ -10,6 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardRemove
 from sqlalchemy.ext.asyncio import AsyncSession
+import aiohttp
 
 from database.orm_query import (
     orm_add_user,
@@ -103,7 +104,25 @@ async def send_error_message(message: types.Message, error: Exception):
         reply_markup=get_url_btns(btns=btns, sizes=(1,)),
     )
 
+PRESS_API_URL = "http://192.168.0.120:30085/predict"
 
+async def get_press_prediction(sequence):
+    """
+    Отправляет последовательность подходов на API LSTM и возвращает предсказание следующего веса
+    :param sequence: [[вес, повт], ...]
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(PRESS_API_URL, json={"sequence": sequence}) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data
+                else:
+                    logging.warning(f"LSTM API вернул ошибку {resp.status}")
+                    return None
+    except Exception as e:
+        logging.exception(f"Ошибка запроса к LSTM API: {e}")
+        return None
 """
 Регистрация пользователя
 """
@@ -1076,12 +1095,13 @@ async def process_current_block(
 
 
 async def first_result_message(session: AsyncSession, user_id, next_ex):
-    set_list = await orm_get_sets_for_exercise_in_previous_session(
+    raw_set_list = await orm_get_sets_for_exercise_in_previous_session(
         session,
         next_ex.id,
         current_session_id=None  # Текущая сессия ещё не создана
     )
     prev_sets = ""
+    predict_text = ""
     if len(set_list) > next_ex.base_sets:
         set_list = set_list[-next_ex.base_sets:]
     if set_list:
@@ -1095,7 +1115,13 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
                 )
             else:
                 prev_sets += f"<strong>Подход {i + 1}: еще не выполнен\n</strong>"
-
+        if next_ex.name.lower() in ["жим штанги лежа", "жим лёжа", "bench press"]:
+            sequence = [[s.weight, s.repetitions] for s in raw_set_list[-5:]]
+            prediction = await get_press_prediction(sequence)
+            if prediction:
+                next_weight = prediction.get("next_weight")
+                rec_text = prediction.get("recommendation", "")
+                predict_text = f"🤖 Рекомендация нейросети:\nПопробуй {next_weight:.1f} кг в следующем подходе.\n{rec_text}"
     if prev_sets == "":
         prev_sets = "----------------------------------------\n<strong>Результаты не обнаружены</strong>\n"
 
@@ -1105,8 +1131,10 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
         f"Рекорд поднятого веса:\n<strong>{int(max_weight)} кг/блок за подход</strong>\n\n"
         f"Результаты прошлой тренировки:\n{prev_sets}"
         f"----------------------------------------\n\n"
-        f"Подход <strong>1 из {next_ex.base_sets}</strong> \nВведите вес снаряда:"
     )
+    end_text = f"Подход <strong>1 из {next_ex.base_sets}</strong> \nВведите вес снаряда:"
+    text = text + predict_text + end_text
+    
     logging.info(f"frm ex id: {next_ex.name}")
     return text
 
