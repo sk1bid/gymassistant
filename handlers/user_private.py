@@ -10,9 +10,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardRemove
 from sqlalchemy.ext.asyncio import AsyncSession
+import aiohttp
 
 from database.orm_query import (
     orm_add_user,
+    orm_get_last_sets_for_exercise,
     orm_update_user,
     orm_add_program,
     orm_get_user_by_id,
@@ -103,7 +105,25 @@ async def send_error_message(message: types.Message, error: Exception):
         reply_markup=get_url_btns(btns=btns, sizes=(1,)),
     )
 
+PRESS_API_URL = "http://192.168.0.120:30085/predict"
 
+async def get_press_prediction(sequence):
+    """
+    Отправляет последовательность подходов на API LSTM и возвращает предсказание следующего веса
+    :param sequence: [[вес, повт], ...]
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(PRESS_API_URL, json={"sequence": sequence}) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data
+                else:
+                    logging.warning(f"LSTM API вернул ошибку {resp.status}")
+                    return None
+    except Exception as e:
+        logging.exception(f"Ошибка запроса к LSTM API: {e}")
+        return None
 """
 Регистрация пользователя
 """
@@ -1076,14 +1096,16 @@ async def process_current_block(
 
 
 async def first_result_message(session: AsyncSession, user_id, next_ex):
-    set_list = await orm_get_sets_for_exercise_in_previous_session(
+    raw_set_list = await orm_get_sets_for_exercise_in_previous_session(
         session,
         next_ex.id,
         current_session_id=None  # Текущая сессия ещё не создана
     )
     prev_sets = ""
-    if len(set_list) > next_ex.base_sets:
-        set_list = set_list[-next_ex.base_sets:]
+    predict_text = ""
+    set_list = raw_set_list
+    if len(raw_set_list) > next_ex.base_sets:
+        set_list = raw_set_list[-next_ex.base_sets:]
     if set_list:
         for i in range(next_ex.base_sets):
             prev_sets += f"----------------------------------------\n"
@@ -1095,7 +1117,18 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
                 )
             else:
                 prev_sets += f"<strong>Подход {i + 1}: еще не выполнен\n</strong>"
-
+        if next_ex.name.lower() in ["жим штанги лежа", "жим лёжа", "bench press"]:
+            last_sets = await orm_get_last_sets_for_exercise(session, next_ex.id, user_id)
+            sequence = [[float(s.weight), int(s.repetitions)] for s in last_sets]
+            logging.info(f"AI list: {sequence}")
+            prediction = await get_press_prediction(sequence)
+            if prediction:
+                next_weight = prediction.get("next_weight")
+                rec_text = prediction.get("recommendation", "")
+                if next_weight is not None:
+                    predict_text = f"🤖 Рекомендация нейросети:\nПопробуй <strong>{next_weight:.1f} кг</strong> в этом подходе.\n\n{rec_text}"
+                else:
+                    predict_text = f"🤖 Нейросеть пока не готова дать рекомендацию.\n{rec_text or ''}"
     if prev_sets == "":
         prev_sets = "----------------------------------------\n<strong>Результаты не обнаружены</strong>\n"
 
@@ -1105,22 +1138,27 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
         f"Рекорд поднятого веса:\n<strong>{int(max_weight)} кг/блок за подход</strong>\n\n"
         f"Результаты прошлой тренировки:\n{prev_sets}"
         f"----------------------------------------\n\n"
-        f"Подход <strong>1 из {next_ex.base_sets}</strong> \nВведите вес снаряда:"
     )
+    end_text = f"Подход <strong>1 из {next_ex.base_sets}</strong> \nВведите вес снаряда:"
+    text = text + predict_text + end_text
+    
     logging.info(f"frm ex id: {next_ex.name}")
     return text
 
 
 async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_index, session_id):
     current_sets = await orm_get_sets_by_session(session, next_ex.id, session_id)  # получаем данные текущей тренировки
-    set_list = await orm_get_sets_for_exercise_in_previous_session(
+    
+    raw_set_list = await orm_get_sets_for_exercise_in_previous_session(
         session,
         next_ex.id,
         current_session_id=session_id  # Исключаем текущую сессию из поиска
     )
-    if len(set_list) > next_ex.base_sets:
-        set_list = set_list[-next_ex.base_sets:]
+    set_list = raw_set_list
+    if len(raw_set_list) > next_ex.base_sets:
+        set_list = raw_set_list[-next_ex.base_sets:]
     prev_sets = ""
+    predict_text = ""
     if set_list:
         for i in range(next_ex.base_sets):
             flag = False
@@ -1157,7 +1195,19 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
                 prev_sets += (f"<strong>Подход {i + 1} 👇\n"
                               f"🦾: {current_sets[i].weight} кг/блок {weight_factor}\n"
                               f"🧮: {current_sets[i].repetitions} повтр. {reps_factor}\n</strong>")
-
+                
+        if next_ex.name.lower() in ["жим штанги лежа", "жим лёжа", "bench press"]:
+            last_sets = await orm_get_last_sets_for_exercise(session, next_ex.id, user_id)
+            sequence = [[float(s.weight), int(s.repetitions)] for s in last_sets]
+            logging.info(f"AI list: {sequence}")
+            prediction = await get_press_prediction(sequence)
+            if prediction:
+                next_weight = prediction.get("next_weight")
+                rec_text = prediction.get("recommendation", "")
+                if next_weight is not None:
+                    predict_text = f"🤖 Рекомендация нейросети:\nПопробуй {next_weight:.1f} кг в этом подходе.\n\n{rec_text}"
+                else:
+                    predict_text = f"🤖 Нейросеть пока не готова дать рекомендацию.\n{rec_text or ''}"
     else:
         prev_sets = "----------------------------------------\n<strong>Результаты не обнаружены</strong>\n"
     max_weight = await orm_get_exercise_max_weight(session, user_id, next_ex.id)
@@ -1165,9 +1215,10 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
         f"Упражнение: <strong>{next_ex.name}</strong>\n\n"
         f"Рекорд поднятого веса:\n<strong>{int(max_weight)} кг/блок за подход</strong>\n\n"
         f"Результаты прошлой тренировки:\n{prev_sets}"
-        f"----------------------------------------\n"
-        f"Подход <strong>{set_index} из {next_ex.base_sets}</strong> \nВведите вес снаряда:"
+        f"----------------------------------------\n"  
     )
+    end_text = f"Подход <strong>{set_index} из {next_ex.base_sets}</strong> \nВведите вес снаряда:"
+    text = text + predict_text + end_text
     logging.info(f"rmas ex id: {next_ex.name}, session_id: {session_id}")
     return text
 

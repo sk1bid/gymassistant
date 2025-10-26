@@ -77,7 +77,7 @@ def exercises_in_program(user_exercises: list, circle_training: bool = False):
     # Группируем упражнения в блоки
     blocks = []
     current_block = []
-    current_block_type = None  # 'circular' или 'standard'
+    current_block_type = None
 
     for ex in user_exercises:
         ex_type = 'circular' if ex.circle_training else 'standard'

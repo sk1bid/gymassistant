@@ -705,6 +705,33 @@ async def orm_get_sets_for_exercise_in_previous_session(
     result = await session.execute(query)
     return result.scalars().all()
 
+async def orm_get_last_sets_for_exercise(
+    session: AsyncSession,
+    exercise_id: int,
+    user_id: int,
+    limit: int = 5
+):
+    """
+    Получает последние N подходов для конкретного упражнения пользователя,
+    независимо от сессий. Упорядочено по дате (старые → новые).
+    Подходит для нейронных моделей.
+    """
+
+    result = await session.execute(
+        select(Set)
+        .join(Exercise, Set.exercise_id == Exercise.id)
+        .join(TrainingSession, Set.training_session_id == TrainingSession.id)
+        .where(
+            Exercise.id == exercise_id,
+            TrainingSession.user_id == user_id
+        )
+        .order_by(Set.created.desc())
+        .limit(limit)
+    )
+
+    sets = result.scalars().all()
+    return list(reversed(sets))
+
 
 """
 Предустановленные упражнения
