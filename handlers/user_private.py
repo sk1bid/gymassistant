@@ -11,6 +11,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardRemove
 from sqlalchemy.ext.asyncio import AsyncSession
 import aiohttp
+import numpy
 
 from database.orm_query import (
     orm_add_user,
@@ -104,12 +105,6 @@ async def send_error_message(message: types.Message, error: Exception):
         "Произошла ошибка, попробуйте позже.",
         reply_markup=get_url_btns(btns=btns, sizes=(1,)),
     )
-
-PRESS_API_URL = "http://192.168.0.120:30085/predict"
-
-import aiohttp
-import logging
-import numpy as np
 
 PRESS_API_URL = "http://192.168.0.120:30085/predict"
 
