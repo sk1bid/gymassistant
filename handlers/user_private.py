@@ -1102,16 +1102,16 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
     )
     prev_sets = ""
     predict_text = ""
-    if len(set_list) > next_ex.base_sets:
-        set_list = set_list[-next_ex.base_sets:]
-    if set_list:
+    if len(raw_set_list) > next_ex.base_sets:
+        raw_set_list = raw_set_list[-next_ex.base_sets:]
+    if raw_set_list:
         for i in range(next_ex.base_sets):
             prev_sets += f"----------------------------------------\n"
-            if len(set_list) > i:
+            if len(raw_set_list) > i:
                 prev_sets += (
-                    f"<strong>{set_list[i].updated.strftime('%d-%m')}"
-                    f" 🦾: {set_list[i].weight} кг/блок,"
-                    f" 🧮: {set_list[i].repetitions} раз\n</strong>"
+                    f"<strong>{raw_set_list[i].updated.strftime('%d-%m')}"
+                    f" 🦾: {raw_set_list[i].weight} кг/блок,"
+                    f" 🧮: {raw_set_list[i].repetitions} раз\n</strong>"
                 )
             else:
                 prev_sets += f"<strong>Подход {i + 1}: еще не выполнен\n</strong>"
