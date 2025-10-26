@@ -107,23 +107,56 @@ async def send_error_message(message: types.Message, error: Exception):
 
 PRESS_API_URL = "http://192.168.0.120:30085/predict"
 
-async def get_press_prediction(sequence):
+async def get_press_prediction(raw_sets):
     """
-    Отправляет последовательность подходов на API LSTM и возвращает предсказание следующего веса
-    :param sequence: [[вес, повт], ...]
+    Формирует корректную последовательность признаков и отправляет её на LSTM API.
+
+    :param raw_sets: список объектов Set из БД
+    :return: dict | None
     """
     try:
+        sets_sorted = sorted(raw_sets, key=lambda s: s.updated)
+        if len(sets_sorted) > 5:
+            sets_sorted = sets_sorted[-5:]
+
+        sequence = []
+        for i, s in enumerate(sets_sorted):
+            if i == 0:
+                delta_w, delta_r = 0, 0
+            else:
+                prev = sets_sorted[i - 1]
+                delta_w = s.weight - prev.weight
+                delta_r = s.repetitions - prev.repetitions
+
+            volume = s.weight * s.repetitions
+            sequence.append([
+                float(s.weight),
+                int(s.repetitions),
+                float(volume),
+                float(delta_w),
+                float(delta_r)
+            ])
+
+        while len(sequence) < 5:
+            sequence.insert(0, [0, 0, 0, 0, 0])
+
+        logging.info(f"AI input sequence: {sequence}")
+
         async with aiohttp.ClientSession() as session:
             async with session.post(PRESS_API_URL, json={"sequence": sequence}) as resp:
                 if resp.status == 200:
                     data = await resp.json()
+                    logging.info(f"LSTM response: {data}")
                     return data
                 else:
-                    logging.warning(f"LSTM API вернул ошибку {resp.status}")
+                    text = await resp.text()
+                    logging.warning(f"LSTM API вернул ошибку {resp.status}: {text}")
                     return None
+
     except Exception as e:
         logging.exception(f"Ошибка запроса к LSTM API: {e}")
         return None
+
 """
 Регистрация пользователя
 """
@@ -1119,9 +1152,7 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
                 prev_sets += f"<strong>Подход {i + 1}: еще не выполнен\n</strong>"
         if next_ex.name.lower() in ["жим штанги лежа", "жим лёжа", "bench press"]:
             last_sets = await orm_get_last_sets_for_exercise(session, next_ex.id, user_id)
-            sequence = [[float(s.weight), int(s.repetitions)] for s in last_sets]
-            logging.info(f"AI list: {sequence}")
-            prediction = await get_press_prediction(sequence)
+            prediction = await get_press_prediction(last_sets)
             if prediction:
                 next_weight = prediction.get("next_weight")
                 rec_text = prediction.get("recommendation", "")
@@ -1198,9 +1229,7 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
                 
         if next_ex.name.lower() in ["жим штанги лежа", "жим лёжа", "bench press"]:
             last_sets = await orm_get_last_sets_for_exercise(session, next_ex.id, user_id)
-            sequence = [[float(s.weight), int(s.repetitions)] for s in last_sets]
-            logging.info(f"AI list: {sequence}")
-            prediction = await get_press_prediction(sequence)
+            prediction = await get_press_prediction(last_sets)
             if prediction:
                 next_weight = prediction.get("next_weight")
                 rec_text = prediction.get("recommendation", "")
