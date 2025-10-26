@@ -1033,7 +1033,7 @@ def get_category_exercise_btns(
         keyboard.row(custom_exercises_button, delete_button)
         keyboard.row(back_button)
     else:
-        #keyboard.row(custom_exercises_button)
+        keyboard.row(custom_exercises_button)
         keyboard.row(back_button)
     return keyboard.as_markup()
 
