@@ -1218,7 +1218,7 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
         f"----------------------------------------\n"  
     )
     end_text = f"Подход <strong>{set_index} из {next_ex.base_sets}</strong> \nВведите вес снаряда:"
-    text = predict_text + end_text
+    text = text + predict_text + end_text
     logging.info(f"rmas ex id: {next_ex.name}, session_id: {session_id}")
     return text
 
