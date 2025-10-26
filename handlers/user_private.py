@@ -1231,9 +1231,7 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
                 
         if next_ex.name.lower() in ["жим штанги лежа", "жим лёжа", "bench press"]:
             last_sets = await orm_get_last_sets_for_exercise(session, next_ex.id, user_id)
-            sequence = [[float(s.weight), int(s.repetitions)] for s in last_sets]
-            logging.info(f"AI list: {sequence}")
-            prediction = await get_press_prediction(sequence)
+            prediction = await get_press_prediction(last_sets)
             if prediction:
                 next_weight = prediction.get("next_weight")
                 rec_text = prediction.get("recommendation", "")
