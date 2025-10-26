@@ -1126,7 +1126,7 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
                 next_weight = prediction.get("next_weight")
                 rec_text = prediction.get("recommendation", "")
                 if next_weight is not None:
-                    predict_text = f"🤖 Рекомендация нейросети:\nПопробуй {next_weight:.1f} кг в этом подходе.\n{rec_text}"
+                    predict_text = f"🤖 Рекомендация нейросети:\nПопробуй <strong>{next_weight:.1f} кг</strong> в этом подходе.\n\n{rec_text}"
                 else:
                     predict_text = f"🤖 Нейросеть пока не готова дать рекомендацию.\n{rec_text or ''}"
     if prev_sets == "":
@@ -1154,6 +1154,7 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
         next_ex.id,
         current_session_id=session_id  # Исключаем текущую сессию из поиска
     )
+    set_list = raw_set_list
     if len(raw_set_list) > next_ex.base_sets:
         set_list = raw_set_list[-next_ex.base_sets:]
     prev_sets = ""
@@ -1204,7 +1205,7 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
                 next_weight = prediction.get("next_weight")
                 rec_text = prediction.get("recommendation", "")
                 if next_weight is not None:
-                    predict_text = f"🤖 Рекомендация нейросети:\nПопробуй {next_weight:.1f} кг в этом подходе.\n{rec_text}"
+                    predict_text = f"🤖 Рекомендация нейросети:\nПопробуй {next_weight:.1f} кг в этом подходе.\n\n{rec_text}"
                 else:
                     predict_text = f"🤖 Нейросеть пока не готова дать рекомендацию.\n{rec_text or ''}"
     else:
