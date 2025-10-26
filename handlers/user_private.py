@@ -1121,7 +1121,10 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
             if prediction:
                 next_weight = prediction.get("next_weight")
                 rec_text = prediction.get("recommendation", "")
-                predict_text = f"🤖 Рекомендация нейросети:\nПопробуй {next_weight:.1f} кг в следующем подходе.\n{rec_text}"
+                if next_weight is not None:
+                    predict_text = f"🤖 Рекомендация нейросети:\nПопробуй {next_weight:.1f} кг в следующем подходе.\n{rec_text}"
+                else:
+                    predict_text = f"🤖 Нейросеть пока не готова дать рекомендацию.\n{rec_text or ''}"
     if prev_sets == "":
         prev_sets = "----------------------------------------\n<strong>Результаты не обнаружены</strong>\n"
 
