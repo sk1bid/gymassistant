@@ -14,6 +14,7 @@ import aiohttp
 
 from database.orm_query import (
     orm_add_user,
+    orm_get_last_sets_for_exercise,
     orm_update_user,
     orm_add_program,
     orm_get_user_by_id,
@@ -1117,7 +1118,7 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
             else:
                 prev_sets += f"<strong>Подход {i + 1}: еще не выполнен\n</strong>"
         if next_ex.name.lower() in ["жим штанги лежа", "жим лёжа", "bench press"]:
-            sequence = [[s.weight, s.repetitions] for s in raw_set_list[-5:]]
+            sequence = await orm_get_last_sets_for_exercise(session, next_ex.id, user_id)
             logging.info(f"{sequence}")
             prediction = await get_press_prediction(sequence)
             if prediction:
