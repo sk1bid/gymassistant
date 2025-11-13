@@ -1,4 +1,4 @@
-name: Deploy GymAssistant Bot to K3s
+name: deploy bot
 
 on:
   push:
@@ -15,15 +15,12 @@ jobs:
       packages: write
 
     steps:
-      # 🧩 1. Забираем код
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 🪣 2. Логинимся в GHCR
       - name: Log in to GHCR
         run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      # 🛠️ 3. Сборка и пуш Docker-образа
       - name: Build and push Docker image
         env:
           REPO: ghcr.io/${{ github.repository }}
@@ -32,33 +29,30 @@ jobs:
 
           if [ "${{ github.ref_name }}" = "main" ]; then
             TAG="prod-$SHORT_SHA"
-            echo "🔨 Building PROD image: $REPO:$TAG"
+            echo "Building PROD image: $REPO:$TAG"
             docker build -t $REPO:$TAG .
-            echo "📦 Pushing $REPO:$TAG..."
+            echo "Pushing $REPO:$TAG..."
             docker push $REPO:$TAG
 
-            # 👉 Добавляем стабильный тег prod
-            echo "🏷️  Tagging and pushing $REPO:prod..."
+            echo "Tagging and pushing $REPO:prod..."
             docker tag $REPO:$TAG $REPO:prod
             docker push $REPO:prod
 
           else
             TAG="dev-$SHORT_SHA"
-            echo "🔨 Building DEV image: $REPO:$TAG"
+            echo "Building DEV image: $REPO:$TAG"
             docker build -t $REPO:$TAG .
-            echo "📦 Pushing $REPO:$TAG..."
+            echo "Pushing $REPO:$TAG..."
             docker push $REPO:$TAG
 
-            # 👉 Добавляем стабильный тег dev
-            echo "🏷️  Tagging and pushing $REPO:dev..."
+            echo "agging and pushing $REPO:dev..."
             docker tag $REPO:$TAG $REPO:dev
             docker push $REPO:dev
           fi
 
           echo "TAG=$TAG" >> $GITHUB_ENV
 
-      # 🚀 4. Деплой на сервер через SSH
-      - name: Deploy to K3s over SSH
+      - name: Deploy over SSH
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_IP }}
@@ -70,17 +64,13 @@ jobs:
             TAG=${{ env.TAG }}
             NAMESPACE=$( [ "${{ github.ref_name }}" = "main" ] && echo "gym-prod" || echo "gym-dev" )
 
-            echo "🌀 Deploying image $REPO:$TAG to namespace $NAMESPACE"
+            echo "Deploying image $REPO:$TAG to namespace $NAMESPACE"
 
-            # Обновляем образ в деплойменте
             kubectl set image deploy/gym-bot aiogram-bot=$REPO:$TAG -n $NAMESPACE
-
-            # Перезапускаем бота
-            echo "✅ Restarting bot..."
+            echo "Restarting bot..."
             kubectl rollout restart deploy/gym-bot -n $NAMESPACE
 
-            # Проверяем статус
-            echo "🔍 Waiting for rollout to complete..."
+            echo "Waiting for rollout to complete..."
             kubectl rollout status deploy/gym-bot -n $NAMESPACE
 
-            echo "🎉 Deployment complete!"
+            echo "Deployment complete!"
