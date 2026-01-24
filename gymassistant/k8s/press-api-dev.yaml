@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: press-api
-        image: ghcr.io/sk1bid/press-api:latest
+        image: ghcr.io/sk1bid/gymassistant/press-api:dev
         ports:
         - containerPort: 8000
         env:
