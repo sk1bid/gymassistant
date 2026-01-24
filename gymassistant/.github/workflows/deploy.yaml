@@ -1,0 +1,76 @@
+name: deploy bot
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build and push Docker image
+        env:
+          REPO: ghcr.io/${{ github.repository }}
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            TAG="prod-$SHORT_SHA"
+            echo "Building PROD image: $REPO:$TAG"
+            docker build -t $REPO:$TAG .
+            echo "Pushing $REPO:$TAG..."
+            docker push $REPO:$TAG
+
+            echo "Tagging and pushing $REPO:prod..."
+            docker tag $REPO:$TAG $REPO:prod
+            docker push $REPO:prod
+
+          else
+            TAG="dev-$SHORT_SHA"
+            echo "Building DEV image: $REPO:$TAG"
+            docker build -t $REPO:$TAG .
+            echo "Pushing $REPO:$TAG..."
+            docker push $REPO:$TAG
+
+            echo "agging and pushing $REPO:dev..."
+            docker tag $REPO:$TAG $REPO:dev
+            docker push $REPO:dev
+          fi
+
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 2222
+          script: |
+            REPO="ghcr.io/${{ github.repository }}"
+            TAG=${{ env.TAG }}
+            NAMESPACE=$( [ "${{ github.ref_name }}" = "main" ] && echo "gym-prod" || echo "gym-dev" )
+
+            echo "Deploying image $REPO:$TAG to namespace $NAMESPACE"
+
+            kubectl set image deploy/gym-bot aiogram-bot=$REPO:$TAG -n $NAMESPACE
+            echo "Restarting bot..."
+            kubectl rollout restart deploy/gym-bot -n $NAMESPACE
+
+            echo "Waiting for rollout to complete..."
+            kubectl rollout status deploy/gym-bot -n $NAMESPACE
+
+            echo "Deployment complete!"
