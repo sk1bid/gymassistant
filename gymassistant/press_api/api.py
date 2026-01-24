@@ -7,9 +7,8 @@ import pickle
 import os
 import threading
 
-# === 1. Конфигурация ===
 SEQ_LEN = 5
-FEATURES = 5  # [вес, повторы, объем, Δвес, Δповторы]
+FEATURES = 5
 BAR_WEIGHT = 20.0
 ALLOWED_PLATES = [25.0, 20.0, 15.0, 10.0, 5.0, 2.5, 1.25]
 
@@ -20,7 +19,6 @@ app = FastAPI(
 lock = threading.Lock()
 
 
-# === 2. Модель ===
 class LSTMPressV2(nn.Module):
     def __init__(self, input_size=FEATURES, hidden_size=128):
         super().__init__()
@@ -95,7 +93,6 @@ def predict(data: SequenceInput):
         if seq.shape != (SEQ_LEN, FEATURES):
             return {"error": f"Ожидалась последовательность {SEQ_LEN}×{FEATURES}, получено {seq.shape}"}
 
-        # масштабирование и предсказание
         seq_scaled = scaler_x.transform(seq).reshape(1, SEQ_LEN, FEATURES)
         tensor = torch.tensor(seq_scaled, dtype=torch.float32)
 

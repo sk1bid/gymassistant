@@ -2,9 +2,7 @@ import logging
 import os
 import aiohttp
 
-# URL API нейросети. В идеале должен браться из переменных окружения.
-# Для Docker Compose это будет http://press-api:8000/predict
-NEIRO_API_URL = os.getenv("NEIRO_API_URL", "http://192.168.0.120:30085/predict")
+NEIRO_API_URL = os.getenv("NEIRO_API_URL", "http://localhost:8000/predict")
 
 async def get_press_prediction(raw_sets):
     """
@@ -14,10 +12,8 @@ async def get_press_prediction(raw_sets):
     :return: dict | None
     """
     try:
-        # Сортируем по времени, чтобы получить верную последовательность
         sets_sorted = sorted(raw_sets, key=lambda s: s.updated)
         
-        # Нам нужны последние 5 подходов
         if len(sets_sorted) > 5:
             sets_sorted = sets_sorted[-5:]
 
@@ -39,7 +35,6 @@ async def get_press_prediction(raw_sets):
                 float(delta_r)
             ])
 
-        # Дополняем нулями, если данных меньше 5
         while len(sequence) < 5:
             sequence.insert(0, [0, 0, 0, 0, 0])
 

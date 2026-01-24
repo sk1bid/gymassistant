@@ -32,7 +32,7 @@ PORT = int(os.getenv("PORT", 8080))
 
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
-ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "851690283").split(",")]
+ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id]
 
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 bot.my_admins_list = ADMIN_IDS
