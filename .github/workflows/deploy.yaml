@@ -30,16 +30,16 @@ jobs:
           TAG="${BASE_TAG}-$SHORT_SHA"
 
           # Build BOT
-          docker build -t $REPO/bot:$TAG -f gymassistant/Dockerfile gymassistant/
-          docker tag $REPO/bot:$TAG $REPO/bot:$BASE_TAG
-          docker push $REPO/bot:$TAG
-          docker push $REPO/bot:$BASE_TAG
+          docker build -t $REPO:bot-$TAG -f gymassistant/Dockerfile gymassistant/
+          docker tag $REPO:bot-$TAG $REPO:bot-$BASE_TAG
+          docker push $REPO:bot-$TAG
+          docker push $REPO:bot-$BASE_TAG
 
           # Build PRESS-API
-          docker build -t $REPO/press-api:$TAG -f gymassistant/press_api/Dockerfile gymassistant/
-          docker tag $REPO/press-api:$TAG $REPO/press-api:$BASE_TAG
-          docker push $REPO/press-api:$TAG
-          docker push $REPO/press-api:$BASE_TAG
+          docker build -t $REPO:api-$TAG -f gymassistant/press_api/Dockerfile gymassistant/
+          docker tag $REPO:api-$TAG $REPO:api-$BASE_TAG
+          docker push $REPO:api-$TAG
+          docker push $REPO:api-$BASE_TAG
 
           echo "TAG=$TAG" >> $GITHUB_ENV
           echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
@@ -60,9 +60,9 @@ jobs:
             echo "Deploying to namespace $NAMESPACE"
 
             # Deploy Bot
-            kubectl set image deploy/gym-bot aiogram-bot=$REPO/bot:$TAG -n $NAMESPACE
+            kubectl set image deploy/gym-bot aiogram-bot=$REPO:bot-$TAG -n $NAMESPACE
             # Deploy API
-            kubectl set image deploy/press-api press-api=$REPO/press-api:$TAG -n $NAMESPACE
+            kubectl set image deploy/press-api press-api=$REPO:api-$TAG -n $NAMESPACE
 
             kubectl rollout restart deploy/gym-bot -n $NAMESPACE
             kubectl rollout restart deploy/press-api -n $NAMESPACE

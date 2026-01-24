@@ -16,7 +16,7 @@ spec:
       containers:
       - name: aiogram-bot
         imagePullPolicy: Always
-        image: ghcr.io/sk1bid/gymassistant/bot:dev
+        image: ghcr.io/sk1bid/gymassistant:bot-dev
         ports:
           - containerPort: 8081
         env:
