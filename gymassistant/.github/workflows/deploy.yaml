@@ -21,36 +21,28 @@ jobs:
       - name: Log in to GHCR
         run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Build and push Docker image
+      - name: Build and push Docker images
         env:
           REPO: ghcr.io/${{ github.repository }}
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          BASE_TAG=$( [ "${{ github.ref_name }}" = "main" ] && echo "prod" || echo "dev" )
+          TAG="${BASE_TAG}-$SHORT_SHA"
 
-          if [ "${{ github.ref_name }}" = "main" ]; then
-            TAG="prod-$SHORT_SHA"
-            echo "Building PROD image: $REPO:$TAG"
-            docker build -t $REPO:$TAG .
-            echo "Pushing $REPO:$TAG..."
-            docker push $REPO:$TAG
+          # Build BOT
+          docker build -t $REPO/bot:$TAG -f Dockerfile .
+          docker tag $REPO/bot:$TAG $REPO/bot:$BASE_TAG
+          docker push $REPO/bot:$TAG
+          docker push $REPO/bot:$BASE_TAG
 
-            echo "Tagging and pushing $REPO:prod..."
-            docker tag $REPO:$TAG $REPO:prod
-            docker push $REPO:prod
-
-          else
-            TAG="dev-$SHORT_SHA"
-            echo "Building DEV image: $REPO:$TAG"
-            docker build -t $REPO:$TAG .
-            echo "Pushing $REPO:$TAG..."
-            docker push $REPO:$TAG
-
-            echo "agging and pushing $REPO:dev..."
-            docker tag $REPO:$TAG $REPO:dev
-            docker push $REPO:dev
-          fi
+          # Build PRESS-API
+          docker build -t $REPO/press-api:$TAG -f press_api/Dockerfile .
+          docker tag $REPO/press-api:$TAG $REPO/press-api:$BASE_TAG
+          docker push $REPO/press-api:$TAG
+          docker push $REPO/press-api:$BASE_TAG
 
           echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
 
       - name: Deploy over SSH
         uses: appleboy/ssh-action@master
@@ -62,15 +54,20 @@ jobs:
           script: |
             REPO="ghcr.io/${{ github.repository }}"
             TAG=${{ env.TAG }}
+            BASE_TAG=${{ env.BASE_TAG }}
             NAMESPACE=$( [ "${{ github.ref_name }}" = "main" ] && echo "gym-prod" || echo "gym-dev" )
 
-            echo "Deploying image $REPO:$TAG to namespace $NAMESPACE"
+            echo "Deploying to namespace $NAMESPACE"
 
-            kubectl set image deploy/gym-bot aiogram-bot=$REPO:$TAG -n $NAMESPACE
-            echo "Restarting bot..."
+            # Deploy Bot
+            kubectl set image deploy/gym-bot aiogram-bot=$REPO/bot:$TAG -n $NAMESPACE
+            # Deploy API
+            kubectl set image deploy/press-api press-api=$REPO/press-api:$TAG -n $NAMESPACE
+
             kubectl rollout restart deploy/gym-bot -n $NAMESPACE
+            kubectl rollout restart deploy/press-api -n $NAMESPACE
 
-            echo "Waiting for rollout to complete..."
             kubectl rollout status deploy/gym-bot -n $NAMESPACE
+            kubectl rollout status deploy/press-api -n $NAMESPACE
 
             echo "Deployment complete!"

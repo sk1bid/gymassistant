@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: press-api
+  namespace: gym-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: press-api
+  template:
+    metadata:
+      labels:
+        app: press-api
+    spec:
+      containers:
+      - name: press-api
+        image: ghcr.io/sk1bid/press-api:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: MODEL_PATH
+          value: "/app/press_lstm.pt"
+        - name: SCALER_X_PATH
+          value: "/app/scaler_x.pkl"
+        - name: SCALER_Y_PATH
+          value: "/app/scaler_y.pkl"
+      imagePullSecrets:
+      - name: ghcr-auth
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: press-api
+  namespace: gym-prod
+spec:
+  selector:
+    app: press-api
+  ports:
+  - port: 8000
+    targetPort: 8000

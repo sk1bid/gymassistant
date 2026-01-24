@@ -48,6 +48,7 @@ from handlers.menu_processing import get_menu_content
 from kbds.inline import MenuCallBack, get_url_btns, error_btns, get_callback_btns
 from kbds.reply import get_keyboard
 from utils.separator import get_action_part
+from services.neiro_api import get_press_prediction
 
 user_private_router = Router()
 user_private_router.message.filter(F.chat.type == "private")
@@ -104,58 +105,6 @@ async def send_error_message(message: types.Message, error: Exception):
         "Произошла ошибка, попробуйте позже.",
         reply_markup=get_url_btns(btns=btns, sizes=(1,)),
     )
-
-PRESS_API_URL = "http://192.168.0.120:30085/predict"
-
-async def get_press_prediction(raw_sets):
-    """
-    Формирует корректную последовательность признаков и отправляет её на LSTM API.
-
-    :param raw_sets: список объектов Set из БД
-    :return: dict | None
-    """
-    try:
-        sets_sorted = sorted(raw_sets, key=lambda s: s.updated)
-        if len(sets_sorted) > 5:
-            sets_sorted = sets_sorted[-5:]
-
-        sequence = []
-        for i, s in enumerate(sets_sorted):
-            if i == 0:
-                delta_w, delta_r = 0, 0
-            else:
-                prev = sets_sorted[i - 1]
-                delta_w = s.weight - prev.weight
-                delta_r = s.repetitions - prev.repetitions
-
-            volume = s.weight * s.repetitions
-            sequence.append([
-                float(s.weight),
-                int(s.repetitions),
-                float(volume),
-                float(delta_w),
-                float(delta_r)
-            ])
-
-        while len(sequence) < 5:
-            sequence.insert(0, [0, 0, 0, 0, 0])
-
-        logging.info(f"AI input sequence: {sequence}")
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(PRESS_API_URL, json={"sequence": sequence}) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    logging.info(f"LSTM response: {data}")
-                    return data
-                else:
-                    text = await resp.text()
-                    logging.warning(f"LSTM API вернул ошибку {resp.status}: {text}")
-                    return None
-
-    except Exception as e:
-        logging.exception(f"Ошибка запроса к LSTM API: {e}")
-        return None
 
 """
 Регистрация пользователя

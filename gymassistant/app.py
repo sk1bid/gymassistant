@@ -32,8 +32,10 @@ PORT = int(os.getenv("PORT", 8080))
 
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
+ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "851690283").split(",")]
+
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-bot.my_admins_list = [851690283]
+bot.my_admins_list = ADMIN_IDS
 
 dp = Dispatcher()
 dp.include_routers(user_private_router, user_group_router, admin_router)
@@ -89,10 +91,36 @@ async def init_app() -> web.Application:
     return app
 
 
-def main():
-    app = asyncio.run(init_app())
-    web.run_app(app, host="0.0.0.0", port=PORT)
+async def main():
+    dp.update.middleware(DataBaseSession(session_pool=session_maker))
 
+    if os.getenv("USE_POLLING", "False").lower() == "true":
+        logging.info("Starting bot in POLLING mode...")
+        await bot.delete_webhook(drop_pending_updates=True)
+        dp.startup.register(on_startup_polling)
+        await dp.start_polling(bot)
+    else:
+        logging.info("Starting bot in WEBHOOK mode...")
+        app = await init_app()
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "0.0.0.0", PORT)
+        await site.start()
+        # Keep the loop running
+        while True:
+            await asyncio.sleep(3600)
+
+async def on_startup_polling(bot: Bot):
+    logging.info("Бот запускается (polling)...")
+    await create_db()
+    async with session_maker() as session:
+        globals.error_pic = await orm_get_banner(session, "error")
+        await load_banners_from_folder(bot, session)
+    
+    for user in bot.my_admins_list:
+        with contextlib.suppress(Exception):
+            await bot.send_message(user, "Бот запущен в режиме POLLING")
 
 if __name__ == "__main__":
-    main()
+    with contextlib.suppress(KeyboardInterrupt, SystemExit):
+        asyncio.run(main())

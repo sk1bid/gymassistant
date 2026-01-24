@@ -1,17 +1,20 @@
-# Игнорировать файл .env
-.env.example
-.env.dev
-.env.prod
-/.venv/
-/venv
-# Игнорировать директории __pycache__
-__pygit cache__/
-
-# Игнорировать все файлы .pyc
+# Python
+__pycache__/
 *.pyc
+.env
+.venv/
+venv/
 
-/alembic/
-/migrations/
+# IDE
+.idea/
+.vscode/
 
-/.vscode/
-k8s/secrets*.yaml*
+# Project specific
+banners/
+press_api/press_lstm.pt
+press_api/scaler_*.pkl
+
+# Alembic
+alembic.ini
+!alembic/
+alembic/__pycache__/
