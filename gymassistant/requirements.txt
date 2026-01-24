@@ -1,6 +1,22 @@
-aiogram==3.22.0
-aiohttp==3.9.5
-python-dotenv==1.1.1
+# Bot
+aiogram==3.13.1
+aiohttp==3.10.10
+python-dotenv==1.0.1
+pydantic==2.8.2
+
+# Database
 SQLAlchemy==2.0.36
 asyncpg==0.29.0
 aiosqlite==0.20.0
+alembic==1.13.3
+
+# Neiro API (LSTM)
+fastapi==0.115.4
+uvicorn==0.32.0
+torch==2.5.1
+numpy==2.1.2
+scikit-learn==1.5.2
+
+# Utils
+pillow==11.0.0
+magic-filter==1.0.12
