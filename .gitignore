@@ -1,18 +1,20 @@
-# Игнорировать файл .env
-.env.example
-.env.dev
-.env.prod
-/.venv/
-/venv
-# Игнорировать директории __pycache__
-__pygit cache__/
+# Environment variables
+.env
+.env.*
+!.env.example
 
-# Игнорировать все файлы .pyc
-*.pyc
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
 
-/alembic/
-/migrations/
+# IDEs
+.idea/
+.vscode/
 
-/.vscode/
-k8s/secrets*.yaml*
+# Project specific
 gymassistant_backup/
+k8s/secrets-prod-updated.yaml
+k8s/press-api-*-updated.yaml
