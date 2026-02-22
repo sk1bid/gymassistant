@@ -44,6 +44,8 @@ spec:
             valueFrom: { secretKeyRef: { name: bot-secrets, key: DB_URL } }
           - name: NEIRO_API_URL
             value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
+          - name: ADMIN_IDS
+            valueFrom: { secretKeyRef: { name: bot-secrets, key: ADMIN_IDS } }
       imagePullSecrets:
         - name: ghcr-auth
 ---

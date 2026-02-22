@@ -38,9 +38,14 @@ async def load_banners_from_folder(bot, session: AsyncSession):
 
         except Exception as e:
             logging.exception(f"Ошибка при загрузке баннера {filename}: {e}")
-            await bot.send_message(
-                chat_id=bot.my_admins_list[0],
-                text=f"⚠️ Ошибка при загрузке {filename}: {e}"
-            )
+            from aiogram.exceptions import TelegramForbiddenError
+            try:
+                if not isinstance(e, TelegramForbiddenError):
+                    await bot.send_message(
+                        chat_id=bot.my_admins_list[0],
+                        text=f"⚠️ Ошибка при загрузке {filename}: {e}"
+                    )
+            except Exception as inner_e:
+                logging.error(f"Не удалось отправить сообщение об ошибке админу: {inner_e}")
 
     logging.info("✅ Загрузка баннеров завершена.")
