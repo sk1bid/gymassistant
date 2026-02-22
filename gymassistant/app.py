@@ -34,19 +34,6 @@ WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
 ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id]
 
-PROXY_URL = os.getenv("PROXY_URL")
-
-if PROXY_URL:
-    from aiohttp_socks import ProxyConnector
-    from aiogram.client.session.aiohttp import AiohttpSession
-    connector = ProxyConnector.from_url(PROXY_URL)
-    session = AiohttpSession(connector=connector)
-    bot = Bot(token=TOKEN, session=session, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-else:
-    bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-
-bot.my_admins_list = ADMIN_IDS
-
 dp = Dispatcher()
 dp.include_routers(user_private_router, user_group_router, admin_router)
 
@@ -81,7 +68,7 @@ async def on_shutdown(bot: Bot):
         await bot.delete_webhook(drop_pending_updates=False)
 
 
-async def init_app() -> web.Application:
+async def init_app(bot: Bot) -> web.Application:
 
     dp.update.middleware(DataBaseSession(session_pool=session_maker))
 
@@ -102,6 +89,19 @@ async def init_app() -> web.Application:
 
 
 async def main():
+    PROXY_URL = os.getenv("PROXY_URL")
+
+    if PROXY_URL:
+        from aiohttp_socks import ProxyConnector
+        from aiogram.client.session.aiohttp import AiohttpSession
+        connector = ProxyConnector.from_url(PROXY_URL)
+        session = AiohttpSession(connector=connector)
+        bot = Bot(token=TOKEN, session=session, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    else:
+        bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+
+    bot.my_admins_list = ADMIN_IDS
+    
     dp.update.middleware(DataBaseSession(session_pool=session_maker))
 
     if os.getenv("USE_POLLING", "False").lower() == "true":
@@ -111,7 +111,7 @@ async def main():
         await dp.start_polling(bot)
     else:
         logging.info("Starting bot in WEBHOOK mode...")
-        app = await init_app()
+        app = await init_app(bot)
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, "0.0.0.0", PORT)
