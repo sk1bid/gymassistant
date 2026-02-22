@@ -46,6 +46,23 @@ spec:
             value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
           - name: ADMIN_IDS
             valueFrom: { secretKeyRef: { name: bot-secrets, key: ADMIN_IDS } }
+          - name: PROXY_URL
+            value: "socks5://127.0.0.1:1080"
+      - name: xray-core
+        image: teddysun/xray
+        ports:
+          - containerPort: 1080
+        volumeMounts:
+          - mountPath: /etc/xray
+            name: xray-config-vol
+            readOnly: true
+      volumes:
+        - name: xray-config-vol
+          secret:
+            secretName: xray-config
+            items:
+              - key: config.json
+                path: config.json
       imagePullSecrets:
         - name: ghcr-auth
 ---
