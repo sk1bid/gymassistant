@@ -1,7 +1,7 @@
 # Bot
 aiogram==3.13.1
 aiohttp==3.10.10
-aiohttp_socks==0.8.4
+aiohttp_socks==0.11.0
 python-dotenv==1.0.1
 pydantic==2.8.2
 
