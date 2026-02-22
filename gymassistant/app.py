@@ -94,8 +94,26 @@ async def main():
     if PROXY_URL:
         from aiohttp_socks import ProxyConnector
         from aiogram.client.session.aiohttp import AiohttpSession
-        connector = ProxyConnector.from_url(PROXY_URL)
-        session = AiohttpSession(connector=connector)
+        from aiohttp import ClientSession
+        
+        class Socks5Session(AiohttpSession):
+            def __init__(self, proxy_url: str):
+                super().__init__()
+                self.proxy_url = proxy_url
+
+            async def create_session(self) -> ClientSession:
+                if self._should_reset_connector:
+                    await self.close()
+
+                if self._session is None or self._session.closed:
+                    self._session = ClientSession(
+                        connector=ProxyConnector.from_url(self.proxy_url)
+                    )
+                    self._should_reset_connector = False
+
+                return self._session
+
+        session = Socks5Session(proxy_url=PROXY_URL)
         bot = Bot(token=TOKEN, session=session, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     else:
         bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
