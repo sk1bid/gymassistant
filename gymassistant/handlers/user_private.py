@@ -552,10 +552,16 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
             except TelegramBadRequest as e:
                 if "message is not modified" not in str(e):
                     logging.warning(f"Ошибка при edit_media: {e}")
+                    
+        async def answer_safe():
+            if text:
+                await callback.answer(text)
+            else:
+                await callback.answer()
         
         await asyncio.gather(
             edit_media_safe(),
-            callback.answer(text) if text else callback.answer()
+            answer_safe()
         )
 
     try:
