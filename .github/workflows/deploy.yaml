@@ -81,9 +81,12 @@ jobs:
             export KUBECONFIG=~/.kube/config
             echo "Deploying to namespace $NAMESPACE"
 
-            # Deploy Bot
+            # Apply manifest changes (like sidecars, volumes)
+            kubectl apply -f gymassistant/k8s/bot-prod.yaml -n $NAMESPACE
+
+            # Deploy Bot with specific tag
             kubectl set image deploy/gym-bot aiogram-bot=$REPO:bot-$TAG -n $NAMESPACE
-            # Deploy API
+            # Deploy API with specific tag
             kubectl set image deploy/press-api press-api=$REPO:api-$TAG -n $NAMESPACE
 
             kubectl rollout restart deploy/gym-bot -n $NAMESPACE
