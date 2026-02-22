@@ -34,7 +34,17 @@ WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
 ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id]
 
-bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+PROXY_URL = os.getenv("PROXY_URL")
+
+if PROXY_URL:
+    from aiohttp_socks import ProxyConnector
+    from aiogram.client.session.aiohttp import AiohttpSession
+    connector = ProxyConnector.from_url(PROXY_URL)
+    session = AiohttpSession(connector=connector)
+    bot = Bot(token=TOKEN, session=session, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+else:
+    bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+
 bot.my_admins_list = ADMIN_IDS
 
 dp = Dispatcher()
