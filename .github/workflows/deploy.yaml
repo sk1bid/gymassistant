@@ -78,6 +78,7 @@ jobs:
             BASE_TAG=${{ env.BASE_TAG }}
             NAMESPACE=$( [ "${{ github.ref_name }}" = "main" ] && echo "gym-prod" || echo "gym-dev" )
 
+            export KUBECONFIG=~/.kube/config
             echo "Deploying to namespace $NAMESPACE"
 
             # Deploy Bot
