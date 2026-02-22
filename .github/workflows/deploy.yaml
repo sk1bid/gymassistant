@@ -18,31 +18,52 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
       - name: Log in to GHCR
-        run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PAT }}
 
-      - name: Build and push Docker images
-        env:
-          REPO: ghcr.io/${{ github.repository }}
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+
+      - name: Determine Tags
+        id: tags
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           BASE_TAG=$( [ "${{ github.ref_name }}" = "main" ] && echo "prod" || echo "dev" )
           TAG="${BASE_TAG}-$SHORT_SHA"
-
-          # Build BOT
-          docker build -t $REPO:bot-$TAG -f gymassistant/Dockerfile gymassistant/
-          docker tag $REPO:bot-$TAG $REPO:bot-$BASE_TAG
-          docker push $REPO:bot-$TAG
-          docker push $REPO:bot-$BASE_TAG
-
-          # Build PRESS-API
-          docker build -t $REPO:api-$TAG -f gymassistant/press_api/Dockerfile gymassistant/
-          docker tag $REPO:api-$TAG $REPO:api-$BASE_TAG
-          docker push $REPO:api-$TAG
-          docker push $REPO:api-$BASE_TAG
-
           echo "TAG=$TAG" >> $GITHUB_ENV
           echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
+          REPO="ghcr.io/${{ github.repository }}"
+          echo "REPO=$REPO" >> $GITHUB_ENV
+
+      - name: Build and push BOT
+        uses: docker/build-push-action@v5
+        with:
+          context: gymassistant/
+          file: gymassistant/Dockerfile
+          push: true
+          tags: ${{ env.REPO }}:bot-${{ env.TAG }},${{ env.REPO }}:bot-${{ env.BASE_TAG }}
+          cache-from: type=registry,ref=${{ env.REPO }}:bot-buildcache
+          cache-to: type=registry,ref=${{ env.REPO }}:bot-buildcache,mode=max
+
+      - name: Build and push PRESS-API
+        uses: docker/build-push-action@v5
+        with:
+          context: gymassistant/
+          file: gymassistant/press_api/Dockerfile
+          push: true
+          tags: ${{ env.REPO }}:api-${{ env.TAG }},${{ env.REPO }}:api-${{ env.BASE_TAG }}
+          cache-from: type=registry,ref=${{ env.REPO }}:api-buildcache
+          cache-to: type=registry,ref=${{ env.REPO }}:api-buildcache,mode=max
 
       - name: Deploy over SSH
         uses: appleboy/ssh-action@master
