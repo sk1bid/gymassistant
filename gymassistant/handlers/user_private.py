@@ -542,13 +542,22 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     state: FSMContext):
     """
     Функция получает на вход данные и выводит информацию пользователю
-    :param callback:
-    :param callback_data:
-    :param session:
-    :param state:
-    :return:
     """
     start_time = time.monotonic()
+    
+    async def safe_edit_answer(media, reply_markup, text=None):
+        async def edit_media_safe():
+            try:
+                await callback.message.edit_media(media=media, reply_markup=reply_markup)
+            except TelegramBadRequest as e:
+                if "message is not modified" not in str(e):
+                    logging.warning(f"Ошибка при edit_media: {e}")
+        
+        await asyncio.gather(
+            edit_media_safe(),
+            callback.answer(text) if text else callback.answer()
+        )
+
     try:
         action = callback_data.action
         logging.info(f"Получен callback от пользователя {callback.from_user.id}: {callback_data}")
@@ -608,21 +617,15 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     exercises_page=callback_data.exercises_page,
                 )
 
-            try:
-                await callback.message.edit_media(media=media, reply_markup=reply_markup)
-            except TelegramBadRequest as e:
-                if "message is not modified" in str(e):
-                    pass
-                else:
-                    logging.warning(f"Ошибка при edit_media: {e}")
-
-            await callback.answer("Упражнение удалено.")
+            await safe_edit_answer(media, reply_markup, "Упражнение удалено.")
 
         elif get_action_part(action).startswith("mv"):
             if get_action_part(action) == "mv_up":
-                await callback.answer(await move_exercise_up(session, callback_data.exercise_id))
+                msg_text = await move_exercise_up(session, callback_data.exercise_id)
             elif get_action_part(action) == "mv_down":
-                await callback.answer(await move_exercise_down(session, callback_data.exercise_id))
+                msg_text = await move_exercise_down(session, callback_data.exercise_id)
+            else:
+                msg_text = None
 
             media, reply_markup = await get_menu_content(
                 session,
@@ -662,13 +665,8 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     session_number=callback_data.session_number,
                     exercises_page=callback_data.exercises_page,
                 )
-            try:
-                await callback.message.edit_media(media=media, reply_markup=reply_markup)
-            except TelegramBadRequest as e:
-                if "message is not modified" in str(e):
-                    pass
-                else:
-                    logging.warning(f"Ошибка при edit_media: {e}")
+            
+            await safe_edit_answer(media, reply_markup, msg_text)
 
         elif get_action_part(action) == "to_del_prgm":
             await clicked_btn(session=session, callback_data=callback_data, state=state,
@@ -696,15 +694,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 session_number=callback_data.session_number,
                 exercises_page=callback_data.exercises_page,
             )
-            try:
-                await callback.message.edit_media(media=media, reply_markup=reply_markup)
-            except TelegramBadRequest as e:
-                if "message is not modified" in str(e):
-                    pass
-                else:
-                    logging.warning(f"Ошибка при edit_media: {e}")
-
-            await callback.answer("Программа удалена.")
+            await safe_edit_answer(media, reply_markup, "Программа удалена.")
 
         elif get_action_part(action).startswith("➕") or get_action_part(action).startswith("➖"):
             parts = get_action_part(action).split("_")
@@ -731,14 +721,6 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     else max(1, user_exercise.base_sets - increment)
                 )
                 await orm_update_exercise(session, callback_data.exercise_id, {"sets": new_sets})
-
-                # if operation == "➕":
-                #     await orm_add_exercise_set(session, callback_data.exercise_id, user_exercise.base_reps)
-                # elif operation == "➖":
-                #     exercise_sets = await orm_get_exercise_sets(session, callback_data.exercise_id)
-                #     if len(exercise_sets) > 1:
-                #         last_set_id = exercise_sets[-1].id
-                #         await orm_delete_exercise_set(session, last_set_id)
 
             media, reply_markup = await get_menu_content(
                 session,
@@ -776,15 +758,8 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     session_number=callback_data.session_number,
                     exercises_page=callback_data.exercises_page,
                 )
-            try:
-                await callback.message.edit_media(media=media, reply_markup=reply_markup)
-            except TelegramBadRequest as e:
-                if "message is not modified" in str(e):
-                    pass
-                else:
-                    logging.warning(f"Ошибка при edit_media: {e}")
-
-            await callback.answer()
+            
+            await safe_edit_answer(media, reply_markup)
 
         elif get_action_part(action) == "training_process":
             media, reply_markup = await get_menu_content(
@@ -804,20 +779,12 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 session_number=callback_data.session_number,
                 exercises_page=callback_data.exercises_page,
             )
-            try:
-                await callback.message.edit_media(media=media, reply_markup=reply_markup)
-            except TelegramBadRequest as e:
-                if "message is not modified" in str(e):
-                    pass
-                else:
-                    logging.warning(f"Ошибка при edit_media: {e}")
-
-            await callback.answer()
+            
+            await safe_edit_answer(media, reply_markup)
             await handle_start_training_process(callback, callback_data, state, session)
 
         elif get_action_part(action) == "finish_training":
             try:
-                await callback.answer()
                 media, reply_markup = await get_menu_content(
                     session,
                     level=callback_data.level,
@@ -836,13 +803,8 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                     session_number=callback_data.session_number,
                     exercises_page=callback_data.exercises_page,
                 )
-                try:
-                    await callback.message.edit_media(media=media, reply_markup=reply_markup)
-                except TelegramBadRequest as e:
-                    if "message is not modified" in str(e):
-                        pass
-                    else:
-                        logging.warning(f"Ошибка при edit_media: {e}")
+                
+                await safe_edit_answer(media, reply_markup)
 
                 user_data = await state.get_data()
                 bot_message_id = user_data.get('bot_message_id')
@@ -889,14 +851,7 @@ async def user_menu(callback: types.CallbackQuery, callback_data: MenuCallBack, 
                 exercises_page=callback_data.exercises_page,
             )
             await state.update_data(selected_exercise_id=None, selected_program_id=None)
-            try:
-                await callback.message.edit_media(media=media, reply_markup=reply_markup)
-            except TelegramBadRequest as e:
-                if "message is not modified" in str(e):
-                    pass
-                else:
-                    logging.warning(f"Ошибка при edit_media: {e}")
-            await callback.answer()
+            await safe_edit_answer(media, reply_markup)
 
     except Exception as e:
         if "message is not modified" in str(e):
