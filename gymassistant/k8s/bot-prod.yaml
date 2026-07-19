@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: aiogram-bot
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         image: ghcr.io/sk1bid/gymassistant:bot-prod
         ports:
           - containerPort: 8080
@@ -48,23 +48,29 @@ spec:
             valueFrom: { secretKeyRef: { name: bot-secrets, key: ADMIN_IDS } }
           - name: PROXY_URL
             value: "socks5://127.0.0.1:1080"
-      - name: xray-core
-        image: teddysun/xray
-        ports:
-          - containerPort: 1080
+          # Webhook не поднять: провайдер режет подсети Telegram в обе стороны,
+          # входящий вызов от api.telegram.org до нас не доходит.
+          - name: USE_POLLING
+            value: "true"
+          # Куда ведёт кнопка меню бота. Саму страницу телефон грузит с sk1bid.ru
+          # напрямую — блокировка Telegram на Mini App не распространяется.
+          - name: MINIAPP_URL
+            value: "https://sk1bid.ru/gym/"
+      - name: ss-client
+        imagePullPolicy: IfNotPresent
+        image: shadowsocks/shadowsocks-libev:latest
+        command: ["ss-local"]
+        args: ["-c", "/etc/shadowsocks/config.json"]
         volumeMounts:
-          - mountPath: /etc/xray
-            name: xray-config-vol
-            readOnly: true
-      volumes:
-        - name: xray-config-vol
-          secret:
-            secretName: xray-config
-            items:
-              - key: config.json
-                path: config.json
+        - name: ss-config-volume
+          mountPath: /etc/shadowsocks
+          readOnly: true
       imagePullSecrets:
         - name: ghcr-auth
+      volumes:
+      - name: ss-config-volume
+        secret:
+          secretName: ss-bot-config
 ---
 apiVersion: v1
 kind: Service
@@ -79,3 +85,16 @@ spec:
       targetPort: 8080
       nodePort: 30080
   type: NodePort
+---
+# Секрет ss-bot-config здесь СОЗНАТЕЛЬНО отсутствует.
+#
+# Раньше он лежал прямо в этом файле в stringData — с адресом сервера и паролем
+# Shadowsocks открытым текстом, в публичном гите. Создавайте его из окружения:
+#
+#   kubectl -n gym-prod create secret generic ss-bot-config \
+#     --from-file=config.json=./ss-config.json
+#
+# где ss-config.json не коммитится (см. .gitignore). Шаблон — в k8s/ss-config.example.json.
+#
+# ВАЖНО: старый пароль остался в истории гита, поэтому он скомпрометирован —
+# его нужно сменить на сервере Shadowsocks, а не просто убрать отсюда.

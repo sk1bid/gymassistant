@@ -1,0 +1,61 @@
+# Тест-бот рядом с прод-ботом. Нужен, чтобы проверить гибрид «отдыха»: воркер
+# rest_notifier должен читать ТЕСТ-postgres (куда пишет тест Mini App) и слать
+# пинги через @sk1bid_test_bot. Прод-бот (gym-bot) читает прод-БД и здесь ни при чём.
+#
+# Образ — свежий билд из текущего кода (ghcr.io/sk1bid/gymassistant:bot-test),
+# в отличие от 26-дневного прод-образа он содержит rest_notifier и miniapp_entry.
+# Прокси-sidecar тот же, что у прод-бота (secret ss-bot-config): без него бот,
+# как и прод, не достучится до Telegram из РФ.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gym-bot-test
+  namespace: gym-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gym-bot-test
+  template:
+    metadata:
+      labels:
+        app: gym-bot-test
+    spec:
+      containers:
+      - name: aiogram-bot
+        image: ghcr.io/sk1bid/gymassistant:bot-test
+        imagePullPolicy: IfNotPresent
+        env:
+          # Тот же тест-токен, что проверяет initData у Mini App.
+          - name: TOKEN
+            valueFrom: { secretKeyRef: { name: miniapp-test-secrets, key: MINIAPP_BOT_TOKEN } }
+          # Тест-postgres (куда пишет тест Mini App). DB_URL собираем из secret через $(VAR).
+          - name: POSTGRES_USER
+            valueFrom: { secretKeyRef: { name: miniapp-testdb-secrets, key: POSTGRES_USER } }
+          - name: POSTGRES_PASSWORD
+            valueFrom: { secretKeyRef: { name: miniapp-testdb-secrets, key: POSTGRES_PASSWORD } }
+          - name: POSTGRES_DB
+            valueFrom: { secretKeyRef: { name: miniapp-testdb-secrets, key: POSTGRES_DB } }
+          - name: DB_URL
+            value: "postgresql+asyncpg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@gym-miniapp-db:5432/$(POSTGRES_DB)?ssl=disable"
+          # Ходит в Telegram через тот же SOCKS5-прокси, в режиме polling.
+          - name: PROXY_URL
+            value: "socks5://127.0.0.1:1080"
+          - name: USE_POLLING
+            value: "true"
+          - name: MINIAPP_URL
+            value: "https://sk1bid.ru/gym/"
+          - name: NEIRO_API_URL
+            value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
+      # Прокси-sidecar: копия из gym-bot, тот же secret ss-bot-config.
+      - name: ss-client
+        image: shadowsocks/shadowsocks-libev:latest
+        command: ["ss-local"]
+        args: ["-c", "/etc/shadowsocks/config.json"]
+        volumeMounts:
+          - name: ss-config-volume
+            mountPath: /etc/shadowsocks
+      volumes:
+        - name: ss-config-volume
+          secret:
+            secretName: ss-bot-config

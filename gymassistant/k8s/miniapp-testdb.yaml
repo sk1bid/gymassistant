@@ -1,0 +1,70 @@
+# Отдельный postgres для тест-контура Mini App. Изолирован от прод-postgres:
+# свой PVC, свой пароль (secret miniapp-testdb-secrets, не прод-креды). Нужен,
+# чтобы залить сюда полную копию боевой базы для тестового материала.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gym-miniapp-db-data
+  namespace: gym-prod
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gym-miniapp-db
+  namespace: gym-prod
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: gym-miniapp-db
+  template:
+    metadata:
+      labels:
+        app: gym-miniapp-db
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:16
+        envFrom:
+          - secretRef:
+              name: miniapp-testdb-secrets
+        env:
+          # initdb не любит непустой корень тома (там появляется lost+found),
+          # поэтому кладём данные в подпапку.
+          - name: PGDATA
+            value: /var/lib/postgresql/data/pgdata
+        ports:
+          - containerPort: 5432
+        volumeMounts:
+          - name: data
+            mountPath: /var/lib/postgresql/data
+        readinessProbe:
+          exec:
+            command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: gym-miniapp-db-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gym-miniapp-db
+  namespace: gym-prod
+spec:
+  selector:
+    app: gym-miniapp-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP

@@ -1,0 +1,91 @@
+# Dev-вариант тест-Mini App: исходники монтируются с ХОСТА в под (hostPath), а не
+# зашиты в образ. Смысл — цикл разработки без sudo. Импортировать свежий образ в
+# containerd k3s можно только через `k3s ctr images import` (сокет /run/k3s/.../
+# containerd.sock — root:root, группа k3s к нему доступа не даёт), а sudo на этом
+# сервере с паролем. Значит любой путь «пересобрал образ → выкатил» упирается в sudo.
+#
+# hostPath это обходит: k3s одноузловой, файлы репозитория лежат прямо на ноде.
+# Под берёт из образа только установленные зависимости и uvicorn, а КОД читает с диска:
+#   - правки static/ (JS/CSS/HTML) видны сразу по refresh — FastAPI отдаёт их с диска;
+#   - правки Python — `kubectl rollout restart deploy/gym-miniapp` (~3с, без билда).
+#
+# Единственное, что по-прежнему требует разового `ctr import` (sudo от пользователя) —
+# смена ЗАВИСИМОСТЕЙ (requirements-miniapp.txt): их в hostPath нет, они в образе.
+#
+# Откатиться к «боевому» тест-образу: kubectl apply -f k8s/miniapp-test.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gym-miniapp
+  namespace: gym-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gym-miniapp
+  template:
+    metadata:
+      labels:
+        app: gym-miniapp
+    spec:
+      containers:
+      - name: miniapp
+        image: ghcr.io/sk1bid/gymassistant:miniapp-test
+        imagePullPolicy: IfNotPresent
+        # Явная команда: та же, что в Dockerfile.miniapp, но с монтированного кода.
+        # Без --reload сознательно — см. шапку файла про inotify и miniapp/.venv.
+        command: ["uvicorn", "miniapp.main:app", "--host", "0.0.0.0", "--port", "8099"]
+        ports:
+          - containerPort: 8099
+        env:
+          - name: POSTGRES_USER
+            valueFrom: { secretKeyRef: { name: miniapp-testdb-secrets, key: POSTGRES_USER } }
+          - name: POSTGRES_PASSWORD
+            valueFrom: { secretKeyRef: { name: miniapp-testdb-secrets, key: POSTGRES_PASSWORD } }
+          - name: POSTGRES_DB
+            valueFrom: { secretKeyRef: { name: miniapp-testdb-secrets, key: POSTGRES_DB } }
+          - name: DB_URL
+            value: "postgresql+asyncpg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@gym-miniapp-db:5432/$(POSTGRES_DB)?ssl=disable"
+          - name: MINIAPP_BOT_TOKEN
+            valueFrom: { secretKeyRef: { name: miniapp-test-secrets, key: MINIAPP_BOT_TOKEN } }
+          - name: NEIRO_API_URL
+            value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
+        volumeMounts:
+          # Код бота переиспользуется как есть — монтируем те же три каталога, что
+          # Dockerfile.miniapp копирует в образ.
+          - name: src-miniapp
+            mountPath: /app/miniapp
+          - name: src-database
+            mountPath: /app/database
+          - name: src-services
+            mountPath: /app/services
+        readinessProbe:
+          httpGet: { path: /healthz, port: 8099 }
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet: { path: /healthz, port: 8099 }
+          initialDelaySeconds: 15
+          periodSeconds: 30
+      volumes:
+        # Абсолютные пути на ноде = каталог репозитория (нода и есть этот хост).
+        - name: src-miniapp
+          hostPath: { path: /home/sk1bid/gymassistant/gymassistant/miniapp, type: Directory }
+        - name: src-database
+          hostPath: { path: /home/sk1bid/gymassistant/gymassistant/database, type: Directory }
+        - name: src-services
+          hostPath: { path: /home/sk1bid/gymassistant/gymassistant/services, type: Directory }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gym-miniapp
+  namespace: gym-prod
+spec:
+  selector:
+    app: gym-miniapp
+  ports:
+    - port: 8099
+      targetPort: 8099
+      nodePort: 30099
+  type: NodePort

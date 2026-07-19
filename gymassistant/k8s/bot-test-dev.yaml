@@ -1,0 +1,67 @@
+# Dev-вариант тест-бота: код бота монтируется с ХОСТА в под (hostPath), как и у
+# Mini App (miniapp-test-dev.yaml). Тот же смысл — цикл без sudo: воркер rest_notifier
+# живёт в процессе бота, и без hostPath его правки требовали бы пересборки образа и
+# `k3s ctr images import` (сокет root:root, sudo с паролем).
+#
+# Монтируем весь каталог репозитория в /app: боту нужно много пакетов (handlers,
+# workers, database, services, kbds, middlewares, filters, utils, app.py). Зависимости
+# берутся из образа (site-packages вне /app), код — с диска. --reload у бота нет,
+# поэтому Python-правки подхватываются рестартом: `dev.sh bot-restart` (~5с, без билда).
+#
+# Откат к образному тест-боту: kubectl apply -f k8s/bot-test.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gym-bot-test
+  namespace: gym-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gym-bot-test
+  template:
+    metadata:
+      labels:
+        app: gym-bot-test
+    spec:
+      containers:
+      - name: aiogram-bot
+        image: ghcr.io/sk1bid/gymassistant:bot-test
+        imagePullPolicy: IfNotPresent
+        env:
+          - name: TOKEN
+            valueFrom: { secretKeyRef: { name: miniapp-test-secrets, key: MINIAPP_BOT_TOKEN } }
+          - name: POSTGRES_USER
+            valueFrom: { secretKeyRef: { name: miniapp-testdb-secrets, key: POSTGRES_USER } }
+          - name: POSTGRES_PASSWORD
+            valueFrom: { secretKeyRef: { name: miniapp-testdb-secrets, key: POSTGRES_PASSWORD } }
+          - name: POSTGRES_DB
+            valueFrom: { secretKeyRef: { name: miniapp-testdb-secrets, key: POSTGRES_DB } }
+          - name: DB_URL
+            value: "postgresql+asyncpg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@gym-miniapp-db:5432/$(POSTGRES_DB)?ssl=disable"
+          - name: PROXY_URL
+            value: "socks5://127.0.0.1:1080"
+          - name: USE_POLLING
+            value: "true"
+          # ?v=3 сохраняем: это «cache namespace», из которого телефон уже вырвался
+          # (см. index.html). Вернуть на /gym/ без query — снова упереться в залипший кэш.
+          - name: MINIAPP_URL
+            value: "https://sk1bid.ru/gym/?v=3"
+          - name: NEIRO_API_URL
+            value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
+        volumeMounts:
+          - name: src
+            mountPath: /app
+      - name: ss-client
+        image: shadowsocks/shadowsocks-libev:latest
+        command: ["ss-local"]
+        args: ["-c", "/etc/shadowsocks/config.json"]
+        volumeMounts:
+          - name: ss-config-volume
+            mountPath: /etc/shadowsocks
+      volumes:
+        - name: src
+          hostPath: { path: /home/sk1bid/gymassistant/gymassistant, type: Directory }
+        - name: ss-config-volume
+          secret:
+            secretName: ss-bot-config

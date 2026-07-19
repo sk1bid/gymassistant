@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .env
 .venv/
+.venv-bot/
 venv/
 
 # IDE
@@ -13,6 +14,14 @@ venv/
 banners/
 press_api/press_lstm.pt
 press_api/scaler_*.pkl
+
+# Локальные базы (SQLite-фолбэк и демо)
+*.db
+*.sqlite3
+
+# Секреты, которым не место в гите: конфиг Shadowsocks с адресом и паролем.
+# Шаблон — k8s/ss-config.example.json, сам секрет создаётся через kubectl.
+k8s/ss-config.json
 
 # Alembic
 alembic.ini
