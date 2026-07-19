@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import time
 from typing import List
 
@@ -8,7 +9,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, StateFilter, CommandStart, or_f
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import ReplyKeyboardRemove
+from aiogram.types import ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from sqlalchemy.ext.asyncio import AsyncSession
 import aiohttp
 
@@ -106,42 +107,32 @@ async def send_error_message(message: types.Message, error: Exception):
         reply_markup=get_url_btns(btns=btns, sizes=(1,)),
     )
 
-"""
-Регистрация пользователя
-"""
+MINIAPP_URL = os.getenv("MINIAPP_URL", "")
 
 
 @user_private_router.message(StateFilter(None), CommandStart())
 async def send_welcome(message: types.Message, state: FSMContext, session: AsyncSession):
     """
-    Вызывается при отправке команды /start
-    Проверяет, зарегистрирован пользователь в системе или нет
-    Если нет, начинается процесс регистрации
-    :param message:
-    :param state:
-    :param session:
-    :return:
+    /start — тонкий лаунчер Mini App.
+
+    Регистрация и меню переехали в веб: пользователь заводится сам при первом
+    входе в приложение (miniapp/deps.py — имя из initData, вес по умолчанию),
+    поэтому диалог «/start → имя → вес» в чате больше не нужен. Бот остаётся
+    точкой входа и каналом уведомлений (отдых, напоминания о тренировке).
     """
-    start_time = time.monotonic()
-    user_id = message.from_user.id
-    try:
-        user = await orm_get_user_by_id(session, user_id)
-        if user:
-            await message.answer(f"Вы уже зарегистрированы как {user.name}.")
-            media, reply_markup = await get_menu_content(session, level=0, action="main")
-            await message.answer_photo(photo=media.media, caption=media.caption, reply_markup=reply_markup)
-        else:
-            await message.answer("Привет, я твой виртуальный тренер. Давай тебя зарегистрируем. Напиши свое имя:")
-            await state.set_state(AddUser.name)
-            await state.update_data(user_id=int(user_id))
-    except Exception as e:
-        logging.exception(f"Ошибка в send_welcome: {e}")
-        btns = {"Написать разработчику": "https://t.me/cg_skbid"}
-        await message.answer("Произошла ошибка, попробуйте позже.",
-                             reply_markup=get_url_btns(btns=btns, sizes=(1,)))
-    finally:
-        duration = time.monotonic() - start_time
-        logging.info(f"Обработка send_welcome заняла {duration:.2f} секунд")
+    await state.clear()
+    if not MINIAPP_URL:
+        await message.answer("Mini App не настроен: не задан MINIAPP_URL.")
+        return
+
+    await message.answer(
+        "💪 <b>GYM.assistant</b>\n\n"
+        "Тренировка, программы и история — в приложении.\n"
+        "Уведомления об отдыхе и тренировках придут сюда, в чат.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Открыть приложение", web_app=WebAppInfo(url=MINIAPP_URL)),
+        ]]),
+    )
 
 
 @user_private_router.message(StateFilter(AddUser.name.state, AddUser.weight.state), Command("cancel"))

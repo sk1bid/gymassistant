@@ -6,6 +6,8 @@ import contextlib
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from dotenv import find_dotenv, load_dotenv
@@ -17,6 +19,8 @@ from database.engine import create_db, drop_db, session_maker
 from handlers.user_private import user_private_router
 from handlers.admin_private import admin_router
 from handlers.user_group import user_group_router
+from handlers.miniapp_entry import router as miniapp_router, setup_menu_button
+from workers.rest_notifier import rest_notifier, router as rest_router
 from utils.load_banners import load_banners_from_folder
 from utils import globals
 
@@ -34,8 +38,13 @@ WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 
 ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id]
 
+MINIAPP_URL = os.getenv("MINIAPP_URL", "")
+
 dp = Dispatcher()
-dp.include_routers(user_private_router, user_group_router, admin_router)
+# Роутеры Mini App идут первыми: /app и кнопка «Закончить отдых» не должны утонуть
+# в общих обработчиках старого меню. Кнопку отдыха новый роутер берёт только вне FSM,
+# так что тренировка, запущенная из самого бота, по-прежнему ведётся его же кодом.
+dp.include_routers(miniapp_router, rest_router, user_private_router, user_group_router, admin_router)
 
 
 async def on_startup(bot: Bot):
@@ -56,6 +65,10 @@ async def on_startup(bot: Bot):
         drop_pending_updates=True,
         allowed_updates=dp.resolve_used_update_types(),
     )
+
+    await start_rest_notifier(bot)
+    with contextlib.suppress(Exception):
+        await setup_menu_button(bot)
 
     for user in bot.my_admins_list:
         with contextlib.suppress(Exception):
@@ -89,14 +102,23 @@ async def init_app(bot: Bot) -> web.Application:
 
 
 async def main():
+    BOT_API_URL = os.getenv("BOT_API_URL")  # e.g. http://telegram-bot-api:8081
     PROXY_URL = os.getenv("PROXY_URL")
 
-    if PROXY_URL:
-        from aiogram.client.session.aiohttp import AiohttpSession
+    session = None
+    if BOT_API_URL:
+        # Локальный telegram-bot-api сервер
+        local_server = TelegramAPIServer.from_base(BOT_API_URL)
+        session = AiohttpSession(api=local_server)
+        logging.info(f"Используем локальный Bot API: {BOT_API_URL}")
+    elif PROXY_URL:
         logging.info(f"Используем прокси: {PROXY_URL}")
         session = AiohttpSession(proxy=PROXY_URL)
+
+    if session:
         bot = Bot(token=TOKEN, session=session, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     else:
+        logging.info("Прямое подключение к api.telegram.org")
         bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 
     bot.my_admins_list = ADMIN_IDS
@@ -125,10 +147,26 @@ async def on_startup_polling(bot: Bot):
     async with session_maker() as session:
         globals.error_pic = await orm_get_banner(session, "error")
         await load_banners_from_folder(bot, session)
-    
+
+    await start_rest_notifier(bot)
+    with contextlib.suppress(Exception):
+        await setup_menu_button(bot)
+
     for user in bot.my_admins_list:
         with contextlib.suppress(Exception):
             await bot.send_message(user, "Бот запущен в режиме POLLING")
+
+
+async def start_rest_notifier(bot: Bot):
+    """
+    Поднимает воркер отдыха и держит ссылку на таск.
+
+    Ссылка нужна не для красоты: у asyncio на таски только слабые ссылки, и таск без
+    единой сильной ссылки может быть собран сборщиком мусора прямо посреди отдыха.
+    """
+    task = asyncio.create_task(rest_notifier(bot, session_maker))
+    bot.rest_notifier_task = task
+    return task
 
 if __name__ == "__main__":
     with contextlib.suppress(KeyboardInterrupt, SystemExit):
