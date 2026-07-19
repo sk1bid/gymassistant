@@ -121,6 +121,9 @@ class TrainingProgram(Base):
                                                               default=300)  # 5 минут стандарт
     circular_rest_between_exercise: Mapped[int] = mapped_column(Integer(), nullable=False,
                                                                 default=60)  # 1 минут стандарт
+    # Тихие промежуточные пинги отдыха: минутные напоминания приходят без звука,
+    # звонко пингуем только за 30 секунд до конца и в момент окончания.
+    quiet_rest_pings: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
 
     user: Mapped['User'] = relationship(backref='training_program', lazy='select')
     training_days: Mapped[List['TrainingDay']] = relationship(
@@ -237,6 +240,13 @@ class TrainingSession(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey('user.user_id', ondelete='CASCADE'), nullable=False)
     date: Mapped[DateTime] = mapped_column(DateTime, server_default=func.now())
     note: Mapped[str] = mapped_column(Text, nullable=True)
+    # Пока NULL — тренировка идёт. Это и есть источник правды о «тренировка в процессе»:
+    # раньше им был FSM в памяти, и рестарт пода обрывал тренировку.
+    finished_at: Mapped[DateTime] = mapped_column(DateTime, nullable=True)
+    # Из какого дня недели запущена — чтобы восстановить экран тренировки после закрытия Mini App.
+    training_day_id: Mapped[int] = mapped_column(
+        ForeignKey('training_day.id', ondelete='SET NULL'), nullable=True
+    )
 
     user: Mapped['User'] = relationship(
         "User",
@@ -250,6 +260,39 @@ class TrainingSession(Base):
         cascade='all, delete-orphan',
         lazy='select'
     )
+
+
+class RestTimer(Base):
+    """
+    Серверный таймер отдыха.
+
+    Живёт в БД, а не в памяти процесса: пользователь закрывает Mini App (и его
+    JS-таймер умирает), под бота может перезапуститься — таймер обязан пережить
+    и то, и другое. Ставить таймер могут оба клиента: и бот, и Mini App через API,
+    это просто строка в таблице. Пингует воркер в процессе бота.
+    """
+    __tablename__ = 'rest_timer'
+    __table_args__ = (Index('idx_rest_timer_active', 'active'),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    ends_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False)
+    total_seconds: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
+    # Когда воркер последний раз слал сообщение (нужно, чтобы пинговать раз в минуту,
+    # а не на каждой итерации цикла).
+    last_ping: Mapped[DateTime] = mapped_column(DateTime, nullable=True)
+    # Что удалить перед отправкой следующего пинга. Именно удалить и прислать новое:
+    # редактирование сообщения в Telegram не даёт ни пуша, ни вибрации.
+    message_id: Mapped[int] = mapped_column(Integer(), nullable=True)
+    # Звонкий пинг за 30 секунд до конца шлём один раз — здесь отмечаем, что уже слали.
+    warned: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
+    quiet: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
+
+    # Что будет после отдыха — показываем в тексте пинга («Дальше: Жим лёжа, подход 2»).
+    next_up: Mapped[str] = mapped_column(String(150), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
 
 
 class Set(Base):
