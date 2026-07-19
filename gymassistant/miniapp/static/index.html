@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>GYM.assistant</title>
+<script src="https://telegram.org/js/telegram-web-app.js?58"></script>
+<!-- Пути относительные, а не от корня: снаружи приложение живёт на подпути
+     https://sk1bid.ru/gym/, и «/styles.css» ушёл бы мимо — в корень домена. -->
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Единственный узел приложения: экраны рисует JS, разметки в HTML нет. -->
+  <main id="app">
+    <div class="center-screen"><div class="spinner"></div></div>
+  </main>
+
+  <!-- Отдых показывается поверх любого экрана: он не должен мешать листать программу. -->
+  <div id="rest-bar" class="hidden"></div>
+
+  <!-- ?v — стабильный «cache namespace», НЕ версия сборки. Мобильный Telegram кэширует
+       статику намертво; копии, легшие в кэш ДО заголовка no-cache, он не ревалидирует.
+       Смена ?v один раз сменила URL (промах кэша) и загрузила файлы уже с no-cache —
+       дальше Telegram ревалидирует их по ETag сам, поэтому повседневные правки видны
+       БЕЗ бампа. Значение должно совпадать с ?v в MINIAPP_URL. Менять только для
+       принудительного жёсткого сброса кэша у всех клиентов. -->
+  <script type="module" src="js/main.js?v=3"></script>
+</body>
+</html>
