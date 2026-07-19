@@ -18,3 +18,12 @@ venv/
 gymassistant_backup/
 k8s/secrets-prod-updated.yaml
 k8s/press-api-*-updated.yaml
+
+# Infra & proxy configs (DPI bypass) — sensitive, never commit.
+# These live in the working tree for convenience but carry server addresses,
+# passwords and UUIDs. Keep them out of git; back them up outside the repo.
+xray-config.json
+config.telemt.toml
+docker-compose.telemt.yml
+sk1bid.ru.conf
+update_token.sh

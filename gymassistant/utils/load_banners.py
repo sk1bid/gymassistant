@@ -17,6 +17,13 @@ async def load_banners_from_folder(bot, session: AsyncSession):
         logging.info("Нет баннеров для загрузки.")
         return
 
+    # Баннеры заливаются отправкой картинки админу (нужен file_id). Без админа —
+    # смысла нет: file_id привязан к боту, и старое чат-меню, которое их показывало,
+    # в Mini App-контуре не используется. Тихо пропускаем, чтобы не сыпать ошибками.
+    if not getattr(bot, "my_admins_list", None):
+        logging.info("Список админов пуст — пропускаем загрузку баннеров.")
+        return
+
     for filename in banners:
         path = os.path.join(folder, filename)
         name, _ = os.path.splitext(filename)

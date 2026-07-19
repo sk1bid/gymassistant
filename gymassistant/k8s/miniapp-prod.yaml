@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gym-miniapp
+  namespace: gym-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gym-miniapp
+  template:
+    metadata:
+      labels:
+        app: gym-miniapp
+    spec:
+      containers:
+      - name: miniapp
+        imagePullPolicy: IfNotPresent
+        image: ghcr.io/sk1bid/gymassistant:miniapp-prod
+        ports:
+          - containerPort: 8099
+        env:
+          # Токен нужен только для проверки подписи initData — в Telegram этот
+          # сервис не ходит. Поэтому и SOCKS5-сайдкара здесь нет, в отличие от бота.
+          - name: MINIAPP_BOT_TOKEN
+            valueFrom: { secretKeyRef: { name: bot-secrets, key: TOKEN } }
+          - name: DB_URL
+            valueFrom: { secretKeyRef: { name: bot-secrets, key: DB_URL } }
+          - name: NEIRO_API_URL
+            value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
+        readinessProbe:
+          httpGet: { path: /healthz, port: 8099 }
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet: { path: /healthz, port: 8099 }
+          initialDelaySeconds: 15
+          periodSeconds: 30
+      imagePullSecrets:
+        - name: ghcr-auth
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gym-miniapp
+  namespace: gym-prod
+spec:
+  selector:
+    app: gym-miniapp
+  ports:
+    - port: 8099
+      targetPort: 8099
+      nodePort: 30099
+  type: NodePort

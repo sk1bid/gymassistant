@@ -1,0 +1,63 @@
+# Тест-контур Mini App в k3s. Отдельно от прод-манифеста (miniapp-prod.yaml):
+# токен тест-бота (@sk1bid_test_bot) и отдельный тест-postgres (gym-miniapp-db,
+# см. miniapp-testdb.yaml) с копией боевой базы — прод-данные/секреты не затрагиваются.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gym-miniapp
+  namespace: gym-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gym-miniapp
+  template:
+    metadata:
+      labels:
+        app: gym-miniapp
+    spec:
+      containers:
+      - name: miniapp
+        image: ghcr.io/sk1bid/gymassistant:miniapp-test
+        # Образ импортирован в containerd вручную, из реестра не тянем.
+        imagePullPolicy: IfNotPresent
+        ports:
+          - containerPort: 8099
+        env:
+          # DB_URL собирается из кред тест-postgres прямо здесь: пароль приходит из
+          # secret и подставляется через $(VAR) — в открытом виде в манифесте его нет.
+          - name: POSTGRES_USER
+            valueFrom: { secretKeyRef: { name: miniapp-testdb-secrets, key: POSTGRES_USER } }
+          - name: POSTGRES_PASSWORD
+            valueFrom: { secretKeyRef: { name: miniapp-testdb-secrets, key: POSTGRES_PASSWORD } }
+          - name: POSTGRES_DB
+            valueFrom: { secretKeyRef: { name: miniapp-testdb-secrets, key: POSTGRES_DB } }
+          - name: DB_URL
+            value: "postgresql+asyncpg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@gym-miniapp-db:5432/$(POSTGRES_DB)?ssl=disable"
+          # Токен только для проверки подписи initData — наружу сервис не ходит.
+          - name: MINIAPP_BOT_TOKEN
+            valueFrom: { secretKeyRef: { name: miniapp-test-secrets, key: MINIAPP_BOT_TOKEN } }
+          - name: NEIRO_API_URL
+            value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
+        readinessProbe:
+          httpGet: { path: /healthz, port: 8099 }
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet: { path: /healthz, port: 8099 }
+          initialDelaySeconds: 15
+          periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gym-miniapp
+  namespace: gym-prod
+spec:
+  selector:
+    app: gym-miniapp
+  ports:
+    - port: 8099
+      targetPort: 8099
+      nodePort: 30099
+  type: NodePort

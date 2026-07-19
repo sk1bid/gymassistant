@@ -1,0 +1,19 @@
+# Зависимости Mini App.
+#
+# Ни aiogram, ни PyTorch: веб-сервис не ходит в Telegram (подпись initData проверяется
+# локально через hmac из стандартной библиотеки) и не считает нейросеть сам —
+# он спрашивает press-api по HTTP.
+
+# API
+fastapi==0.115.4
+uvicorn[standard]==0.32.0
+pydantic==2.8.2
+python-dotenv==1.0.1
+
+# Поход в press-api за рекомендацией веса
+aiohttp==3.10.10
+
+# Database — тот же слой данных, что у бота
+SQLAlchemy==2.0.36
+asyncpg==0.29.0
+aiosqlite==0.20.0
