@@ -109,6 +109,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: 2222
           script: |
+            set -euo pipefail
             REPO="ghcr.io/${{ github.repository }}"
             TAG=${{ env.TAG }}
             BASE_TAG=${{ env.BASE_TAG }}
@@ -116,6 +117,17 @@ jobs:
 
             export KUBECONFIG=~/.kube/config
             echo "Deploying to namespace $NAMESPACE"
+
+            # The manifests live in the repo checkout on the server, one directory
+            # below home. Without this cd the apply paths resolved to a non-existent
+            # location, the apply silently errored, and `set image` shipped a new tag
+            # onto a stale (test/dev) spec — half a deploy. cd + set -e makes a missing
+            # manifest abort loudly instead.
+            cd ~/gymassistant
+            # Best-effort refresh so the manifests match the built commit; never fail
+            # the deploy if the working copy can't fast-forward.
+            git fetch --quiet origin main && git merge --ff-only --quiet origin/main \
+              || echo "warning: repo not fast-forwarded; applying on-disk manifests"
 
             # Apply manifest changes (like sidecars, volumes)
             kubectl apply -f gymassistant/k8s/bot-prod.yaml -n $NAMESPACE
