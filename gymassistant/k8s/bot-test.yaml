@@ -43,8 +43,11 @@ spec:
             value: "socks5://127.0.0.1:1080"
           - name: USE_POLLING
             value: "true"
+          # Тест-бот ведёт на тестовый Mini App: подпись initData проверяется токеном
+          # того бота, через которого открыли приложение, поэтому прод-адрес здесь
+          # давал бы вечное 401. См. k8s/miniapp-test-standalone.yaml.
           - name: MINIAPP_URL
-            value: "https://sk1bid.ru/gym/"
+            value: "https://sk1bid.ru/gym-test/"
           - name: NEIRO_API_URL
             value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
       # Прокси-sidecar: копия из gym-bot, тот же secret ss-bot-config.

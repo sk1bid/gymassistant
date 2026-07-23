@@ -1,0 +1,106 @@
+# Тест-контур Mini App, живущий ПАРАЛЛЕЛЬНО проду, а не вместо него.
+#
+# Зачем отдельный файл. Все три соседних манифеста (miniapp-prod, miniapp-test,
+# miniapp-test-dev) описывают один и тот же Deployment `gym-miniapp` и Service на
+# nodePort 30099 — они задуманы как переключатель: применил один, он вытеснил другой.
+# Для дизайнерских итераций это не подходит: пока смотришь тестовую сборку, боевой
+# Mini App @gymassit_bot стоит подменённым и ходит в тестовую базу, где нет данных
+# пользователей.
+#
+# Здесь всё переименовано (gym-miniapp-test, nodePort 30098), поэтому контуры
+# сосуществуют. Прод не трогается вообще.
+#
+# Код монтируется с ХОСТА (hostPath), как в miniapp-test-dev.yaml: правки static/
+# (JS/CSS/HTML) видны по обычному refresh, без пересборки образа и без sudo —
+# `k3s ctr images import` на этом сервере требует пароля. Правки Python —
+# `kubectl rollout restart deploy/gym-miniapp-test`.
+#
+# Снаружи вешается на https://sk1bid.ru/gym-test/ (см. location /gym-test/ в
+# sk1bid.ru.conf). Кнопка Mini App у тест-бота должна вести туда же, иначе Telegram
+# подпишет initData и откроет прод-адрес.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gym-miniapp-test
+  namespace: gym-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gym-miniapp-test
+  template:
+    metadata:
+      labels:
+        app: gym-miniapp-test
+    spec:
+      containers:
+      - name: miniapp
+        # Образ нужен только ради зависимостей и uvicorn — код приезжает из hostPath,
+        # поэтому какой именно из образов Mini App взят, на поведение не влияет.
+        # Берём тот, что уже лежит в containerd ноды: тега miniapp-test там нет, а
+        # вытянуть его неоткуда — registry-mirror на этом хосте не резолвится
+        # (ghcr.mirror.lcr.io), и любой pull кончается ImagePullBackOff.
+        image: ghcr.io/sk1bid/gymassistant:miniapp-prod-d8bfbd1
+        # Never, а не IfNotPresent: если образ вдруг пропадёт, пусть падает сразу
+        # и понятно, а не уходит в бесконечный pull к недоступному реестру.
+        imagePullPolicy: Never
+        command: ["uvicorn", "miniapp.main:app", "--host", "0.0.0.0", "--port", "8099"]
+        ports:
+          - containerPort: 8099
+        env:
+          # Тестовая база (gym-miniapp-db), не боевая: пароль приходит из secret
+          # и подставляется через $(VAR) — в открытом виде в манифесте его нет.
+          - name: POSTGRES_USER
+            valueFrom: { secretKeyRef: { name: miniapp-testdb-secrets, key: POSTGRES_USER } }
+          - name: POSTGRES_PASSWORD
+            valueFrom: { secretKeyRef: { name: miniapp-testdb-secrets, key: POSTGRES_PASSWORD } }
+          - name: POSTGRES_DB
+            valueFrom: { secretKeyRef: { name: miniapp-testdb-secrets, key: POSTGRES_DB } }
+          - name: DB_URL
+            value: "postgresql+asyncpg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@gym-miniapp-db:5432/$(POSTGRES_DB)?ssl=disable"
+          # Ключ проверки подписи initData. Обязан быть токеном ТОГО бота, через
+          # которого открывают приложение: Telegram подписывает initData именно им.
+          # Несовпадение даёт 401 «подпись initData неверна» — и ничего больше.
+          - name: MINIAPP_BOT_TOKEN
+            valueFrom: { secretKeyRef: { name: miniapp-test-secrets, key: MINIAPP_BOT_TOKEN } }
+          - name: NEIRO_API_URL
+            value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
+        volumeMounts:
+          # Те же три каталога, что Dockerfile.miniapp копирует в образ.
+          - name: src-miniapp
+            mountPath: /app/miniapp
+          - name: src-database
+            mountPath: /app/database
+          - name: src-services
+            mountPath: /app/services
+        readinessProbe:
+          httpGet: { path: /healthz, port: 8099 }
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet: { path: /healthz, port: 8099 }
+          initialDelaySeconds: 15
+          periodSeconds: 30
+      volumes:
+        # Абсолютные пути на ноде = каталог репозитория (k3s одноузловой, нода — этот хост).
+        - name: src-miniapp
+          hostPath: { path: /home/sk1bid/gymassistant/gymassistant/miniapp, type: Directory }
+        - name: src-database
+          hostPath: { path: /home/sk1bid/gymassistant/gymassistant/database, type: Directory }
+        - name: src-services
+          hostPath: { path: /home/sk1bid/gymassistant/gymassistant/services, type: Directory }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gym-miniapp-test
+  namespace: gym-prod
+spec:
+  selector:
+    app: gym-miniapp-test
+  ports:
+    - port: 8099
+      targetPort: 8099
+      # 30098, а не 30099: тот занят боевым Mini App, который здесь не трогаем.
+      nodePort: 30098
+  type: NodePort

@@ -45,8 +45,14 @@ spec:
             value: "true"
           # ?v=3 сохраняем: это «cache namespace», из которого телефон уже вырвался
           # (см. index.html). Вернуть на /gym/ без query — снова упереться в залипший кэш.
+          # Тест-бот обязан вести на ТЕСТОВЫЙ Mini App, а не на /gym/.
+          # Telegram подписывает initData токеном того бота, через которого открыли
+          # приложение. Пока здесь стоял прод-адрес, тест-бот открывал прод-Mini App,
+          # тот проверял подпись токеном боевого бота — и всегда отдавал 401
+          # «подпись initData неверна». Контур на /gym-test/ проверяет её токеном
+          # тест-бота (miniapp-test-secrets), поэтому сходится.
           - name: MINIAPP_URL
-            value: "https://sk1bid.ru/gym/?v=3"
+            value: "https://sk1bid.ru/gym-test/?v=3"
           - name: NEIRO_API_URL
             value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
         volumeMounts:
