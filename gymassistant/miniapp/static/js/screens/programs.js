@@ -7,14 +7,21 @@
  * между подходами и не имели способа это изменить. А rest_between_exercise и вовсе
  * клали в FSM и ни разу не читали — отдыха между упражнениями просто не было.
  */
-import { api } from './../api.js';
+import { api, cached } from './../api.js';
 import { go } from './../router.js';
 import { confirm, haptic } from './../tg.js';
-import { clock, escape, on, onAction, plural, render, sheet } from './../ui.js';
+import { clock, escape, on, onAction, plural, render, same, sheet } from './../ui.js';
 
 export async function programsScreen() {
-  const { programs } = await api.programs.list();
+  // Мгновенная отрисовка из последнего ответа, свежий — следом. См. home.js.
+  const known = cached('api/programs');
+  if (known) paintPrograms(known.programs);
 
+  const data = await api.programs.list();
+  if (!known || !same(known, data)) paintPrograms(data.programs);
+}
+
+function paintPrograms(programs) {
   render(`
     <h1>Программы</h1>
 
@@ -27,18 +34,17 @@ export async function programsScreen() {
 
     ${programs.map((program) => `
       <button class="list-item" data-open="${program.id}">
-        <span class="icon">${program.active ? '🟢' : '⚪️'}</span>
         <span class="grow">
-          <span class="title">${escape(program.name)}</span><br>
-          <span class="sub">
-            ${program.active ? 'активна · ' : ''}${plural(program.filled_days, 'день', 'дня', 'дней')} заполнено
-          </span>
+          <span class="title">${escape(program.name)}</span>
+          ${program.active ? '<span class="pill on">активна</span>' : ''}
+          <br>
+          <span class="sub">${plural(program.filled_days, 'день', 'дня', 'дней')} заполнено</span>
         </span>
         <span class="chev">›</span>
       </button>
     `).join('')}
 
-    <button class="btn secondary" id="create" style="margin-top:8px">Создать программу</button>
+    <button class="btn secondary mt-4" id="create">Создать программу</button>
   `);
 
   onAction('[data-open]', (node) => go(`/program/${node.dataset.open}`));
@@ -50,11 +56,11 @@ export async function programsScreen() {
         <label>Название</label>
         <input type="text" id="name" maxlength="50" placeholder="Например: Силовая, 3 дня">
       </div>
-      <p class="hint" style="margin-bottom:16px">
+      <p class="hint">
         Создадутся все семь дней недели — заполните те, в которые тренируетесь.
         Программа сразу станет активной.
       </p>
-      <button class="btn" id="save">Создать</button>
+      <button class="btn mt-4" id="save">Создать</button>
     `);
 
     form.node.querySelector('#save').onclick = async () => {
@@ -76,9 +82,7 @@ export async function programScreen({ id }) {
 
   render(`
     <h1>${escape(program.name)}</h1>
-    <p class="hint" style="margin:-8px 0 16px 4px">
-      ${program.active ? '🟢 активная программа' : 'не активна'}
-    </p>
+    <p class="subtitle">${program.active ? 'Активная программа' : 'Не активна'}</p>
 
     ${data.days.map((day) => `
       <button class="list-item" data-day="${day.id}">
@@ -99,10 +103,10 @@ export async function programScreen({ id }) {
     <button class="btn secondary" id="settings">Настройки отдыха и кругов</button>
 
     ${program.active
-      ? '<button class="btn ghost" id="deactivate" style="margin-top:8px">Сделать неактивной</button>'
-      : '<button class="btn" id="activate" style="margin-top:8px">Сделать активной</button>'}
+      ? '<button class="btn ghost mt-2" id="deactivate">Сделать неактивной</button>'
+      : '<button class="btn mt-2" id="activate">Сделать активной</button>'}
 
-    <button class="btn danger" id="remove" style="margin-top:8px">Удалить программу</button>
+    <button class="btn danger mt-2" id="remove">Удалить программу</button>
   `);
 
   onAction('[data-day]', (node) => go(`/day/${node.dataset.day}`));
@@ -136,7 +140,7 @@ function openSettings(program, reload) {
   const form = sheet(`
     <h2>Настройки</h2>
 
-    <div class="section-title" style="margin-top:0">Обычные упражнения</div>
+    <div class="section-title">Обычные упражнения</div>
     ${seconds('rest_between_set', 'Отдых между подходами', settings.rest_between_set)}
     ${seconds('rest_between_exercise', 'Отдых между упражнениями', settings.rest_between_exercise)}
 
@@ -152,10 +156,10 @@ function openSettings(program, reload) {
               settings.circular_rest_between_rounds)}
 
     <div class="section-title">Уведомления</div>
-    <div class="card" style="background:var(--bg)">
-      <label class="switch" style="margin:0">
+    <div class="switch-card">
+      <label class="switch">
         <span class="grow">
-          <span style="font-weight:600">Тихие напоминания</span><br>
+          <span class="lead">Тихие напоминания</span><br>
           <span class="hint">Минутные пинги без звука, звонко — за 30 секунд до конца и в конце</span>
         </span>
         <input type="checkbox" id="quiet_rest_pings" ${settings.quiet_rest_pings ? 'checked' : ''}>
@@ -163,7 +167,7 @@ function openSettings(program, reload) {
       </label>
     </div>
 
-    <button class="btn" id="save" style="margin-top:16px">Сохранить</button>
+    <button class="btn mt-4" id="save">Сохранить</button>
   `);
 
   form.node.querySelector('#save').onclick = async () => {
@@ -199,7 +203,7 @@ function seconds(id, label, value) {
       <div class="row">
         <input type="number" id="${id}" data-seconds inputmode="numeric"
                min="0" max="3600" step="15" value="${value}">
-        <span class="hint" id="${id}-hint" style="flex:0 0 52px;text-align:right"></span>
+        <span class="hint secs" id="${id}-hint"></span>
       </div>
     </div>
   `;

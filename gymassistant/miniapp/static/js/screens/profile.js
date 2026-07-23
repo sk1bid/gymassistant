@@ -8,48 +8,63 @@
  * Графики — то, чего в чате не было в принципе: рисовать линию прогресса символами
  * никто не стал, поэтому от всей истории пользователю доставался плоский список чисел.
  */
-import { api } from './../api.js';
+import { api, cached } from './../api.js';
 import { go } from './../router.js';
 import { haptic } from './../tg.js';
-import { escape, formatDate, on, onAction, plural, render, sheet, volume, weight } from './../ui.js';
+import {
+  escape, formatDate, on, onAction, plural, render, same, sheet, shortDate, volume, weight,
+} from './../ui.js';
+
+const ACTIVITY_PATH = 'api/stats/activity?weeks=18';
 
 export async function profileScreen() {
-  const data = await api.profile();
+  // Мгновенная отрисовка из последнего ответа, свежий — следом. См. home.js.
+  const known = cached('api/profile');
+  // Снимок ДО запроса: api.activity() перезапишет кэш, и сравнивать было бы не с чем.
+  const knownActivity = cached(ACTIVITY_PATH);
 
+  if (known) paintProfile(known, knownActivity);
+
+  // Календарь не должен ронять экран: профиль обязан открыться и без него.
+  const [data, activity] = await Promise.all([
+    api.profile(),
+    api.activity().catch(() => null),
+  ]);
+
+  if (!known || !same([known, knownActivity], [data, activity])) {
+    paintProfile(data, activity);
+  }
+}
+
+function paintProfile(data, activity) {
   render(`
     <h1>Профиль</h1>
 
-    <div class="card">
-      <div class="row">
-        <div>
-          <div style="font-size:20px;font-weight:700">${escape(data.user.name)}</div>
-          <div class="hint">${weight(data.user.weight)} кг</div>
-        </div>
-        <button class="btn secondary small" id="edit">Изменить</button>
+    <div class="row">
+      <div class="grow">
+        <div class="lead">${escape(data.user.name)}</div>
+        <div class="hint num">${weight(data.user.weight)} кг</div>
       </div>
+      <button class="btn secondary small" id="edit">Изменить</button>
     </div>
 
-    <div class="card">
-      <div class="row">
-        <span class="hint">Тренировок</span><span>${data.total.sessions}</span>
-      </div>
-      <div class="row">
-        <span class="hint">Подходов</span><span>${data.total.sets}</span>
-      </div>
-      <div class="row">
-        <span class="hint">Поднято всего</span><span>${volume(data.total.volume)}</span>
-      </div>
+    <div class="section-title">Всего</div>
+    <div class="stats">
+      ${stat(data.total.sessions, 'тренировок')}
+      ${stat(data.total.sets, 'подходов')}
+      ${stat(volume(data.total.volume), 'поднято')}
     </div>
 
+    ${heatmap(activity)}
+
+    <div class="section-title">Разделы</div>
     <button class="list-item" data-go="/records">
-      <span class="icon">🏆</span>
       <span class="grow"><span class="title">Рекорды</span><br>
         <span class="sub">Личные максимумы и прогресс</span></span>
       <span class="chev">›</span>
     </button>
 
     <button class="list-item" data-go="/history">
-      <span class="icon">📊</span>
       <span class="grow"><span class="title">История тренировок</span><br>
         <span class="sub">${plural(data.total.sessions, 'тренировка', 'тренировки', 'тренировок')}</span></span>
       <span class="chev">›</span>
@@ -85,6 +100,85 @@ export async function profileScreen() {
   });
 }
 
+const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн',
+                'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+
+/**
+ * Календарь тренировок «квадратиками», как на GitHub.
+ *
+ * Сетка раскладывается по колонкам (grid-auto-flow: column) на семь строк, а сервер
+ * отдаёт дни подряд начиная с понедельника — поэтому день недели совпадает с номером
+ * строки сам собой, без единого вычисления на клиенте.
+ *
+ * Насыщенность считается от личного максимума, а не от абсолютного числа подходов:
+ * у одного «много» — это 30 подходов, у другого 12, и общая шкала врала бы обоим.
+ */
+function heatmap(activity) {
+  if (!activity || !activity.days.length) return '';
+
+  const max = activity.max_sets || 1;
+  const level = (sets) => {
+    if (!sets) return 0;
+    const ratio = sets / max;
+    if (ratio <= 0.25) return 1;
+    if (ratio <= 0.5) return 2;
+    if (ratio <= 0.75) return 3;
+    return 4;
+  };
+
+  const days = activity.days;
+  const columns = Math.ceil(days.length / 7);
+
+  // Месяц подписываем только там, где он начинается, — иначе подписи сольются.
+  let previousMonth = -1;
+  const months = Array.from({ length: columns }, (_, column) => {
+    const day = days[column * 7];
+    if (!day) return '<span></span>';
+
+    const month = new Date(day.date).getMonth();
+    if (month === previousMonth) return '<span></span>';
+
+    previousMonth = month;
+    return `<span>${MONTHS[month]}</span>`;
+  }).join('');
+
+  const cells = days.map((day) => {
+    const caption = day.sets
+      ? `${shortDate(day.date)}: ${plural(day.sets, 'подход', 'подхода', 'подходов')}`
+      : `${shortDate(day.date)} — без тренировки`;
+
+    return `<span data-l="${level(day.sets)}"${day.date === activity.today ? ' class="today"' : ''}
+                  title="${escape(caption)}"></span>`;
+  }).join('');
+
+  return `
+    <div class="section-title">Активность</div>
+    <p class="subtitle">
+      ${plural(activity.sessions, 'тренировка', 'тренировки', 'тренировок')}
+      за ${plural(activity.weeks, 'неделю', 'недели', 'недель')}
+    </p>
+
+    <div class="heat-months">${months}</div>
+    <div class="heat-grid">${cells}</div>
+
+    <div class="heat-legend">
+      меньше
+      <i data-l="0"></i><i data-l="1"></i><i data-l="2"></i><i data-l="3"></i><i data-l="4"></i>
+      больше
+    </div>
+  `;
+}
+
+/** Три числа в ряд: они и есть содержимое профиля, поэтому набраны как цифры. */
+function stat(value, label) {
+  return `
+    <div class="stat">
+      <div class="v">${value}</div>
+      <div class="k">${label}</div>
+    </div>
+  `;
+}
+
 export async function historyScreen() {
   const { sessions } = await api.history();
 
@@ -116,20 +210,18 @@ export async function sessionScreen({ id }) {
 
   render(`
     <h1>${escape(formatDate(data.session.date))}</h1>
-    <p class="hint" style="margin:-8px 0 16px 4px">
+    <p class="subtitle">
       ${plural(data.session.sets, 'подход', 'подхода', 'подходов')} · ${volume(data.session.volume)}
     </p>
 
     ${data.exercises.map((exercise) => `
-      <div class="card">
-        <div style="font-weight:600;margin-bottom:10px">${escape(exercise.name)}</div>
-        ${exercise.sets.map((set, i) => `
-          <div class="set-chip">
-            <span class="n">Подход ${i + 1}</span>
-            <span>${weight(set.weight)} кг × ${set.reps}</span>
-          </div>
-        `).join('')}
-      </div>
+      <div class="section-title">${escape(exercise.name)}</div>
+      ${exercise.sets.map((set, i) => `
+        <div class="set-chip">
+          <span class="n">Подход ${i + 1}</span>
+          <span class="v">${weight(set.weight)} кг × ${set.reps}</span>
+        </div>
+      `).join('')}
     `).join('')}
   `);
 }
@@ -153,7 +245,7 @@ export async function recordsScreen() {
           <span class="title">${escape(record.name)}</span><br>
           <span class="sub">лучший подход: ${volume(record.max_volume)} объёма</span>
         </span>
-        <span style="font-weight:700">${weight(record.max_weight)} кг</span>
+        <span class="lead num">${weight(record.max_weight)} кг</span>
       </button>
     `).join('')}
   `);
@@ -164,10 +256,11 @@ export async function recordsScreen() {
 export async function progressScreen({ id }) {
   const data = await api.exerciseProgress(Number(id));
   const points = data.points;
+  const dates = points.map((p) => p.date);
 
   render(`
     <h1>${escape(data.name)}</h1>
-    <p class="hint" style="margin:-8px 0 16px 4px">
+    <p class="subtitle">
       ${plural(points.length, 'тренировка', 'тренировки', 'тренировок')} с этим упражнением
     </p>
 
@@ -176,24 +269,18 @@ export async function progressScreen({ id }) {
         <p>Для графика нужно хотя бы две тренировки.</p>
       </div>
     ` : `
-      <div class="card">
-        <div class="section-title" style="margin:0 0 8px">Рабочий вес, кг</div>
-        ${lineChart(points.map((p) => p.max_weight))}
-      </div>
+      <div class="section-title">Рабочий вес, кг</div>
+      ${lineChart(points.map((p) => p.max_weight), dates)}
 
-      <div class="card">
-        <div class="section-title" style="margin:0 0 8px">Объём за тренировку, кг</div>
-        ${lineChart(points.map((p) => p.volume))}
-      </div>
+      <div class="section-title">Объём за тренировку, кг</div>
+      ${lineChart(points.map((p) => p.volume), dates, true)}
     `}
 
     <div class="section-title">По тренировкам</div>
     ${points.slice().reverse().map((point) => `
-      <div class="card tight">
-        <div class="row">
-          <span class="hint">${escape(formatDate(point.date))}</span>
-          <span><b>${weight(point.max_weight)} кг</b> · ${volume(point.volume)}</span>
-        </div>
+      <div class="set-chip">
+        <span class="n">${escape(formatDate(point.date))}</span>
+        <span class="v">${weight(point.max_weight)} кг · ${volume(point.volume)}</span>
       </div>
     `).join('')}
   `);
@@ -204,38 +291,50 @@ export async function progressScreen({ id }) {
  *
  * Библиотеку тянуть незачем: точек десятки, а внешние скрипты в Mini App — это ещё
  * и лишняя загрузка на телефоне в зале, где интернет обычно так себе.
+ *
+ * Пропорции не растягиваем: раньше стоял preserveAspectRatio="none", и на широком
+ * экране вместе с картинкой растягивались подписи и толщина линии. Теперь высота
+ * считается от ширины, а SVG остаётся собой.
  */
-function lineChart(values) {
+function lineChart(values, dates, alt = false) {
   const W = 320;
-  const H = 160;
-  const PAD = 24;
+  const H = 170;
+  const LEFT = 30;
+  const RIGHT = 10;
+  const TOP = 14;
+  const BOTTOM = 28;
 
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
 
-  const x = (i) => PAD + (i * (W - PAD * 2)) / Math.max(1, values.length - 1);
-  const y = (v) => H - PAD - ((v - min) / span) * (H - PAD * 2);
+  const x = (i) => LEFT + (i * (W - LEFT - RIGHT)) / Math.max(1, values.length - 1);
+  const y = (v) => TOP + (1 - (v - min) / span) * (H - TOP - BOTTOM);
 
   const line = values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-  const area = `${line} L${x(values.length - 1).toFixed(1)},${H - PAD} L${x(0).toFixed(1)},${H - PAD} Z`;
+  const area = `${line} L${x(values.length - 1).toFixed(1)},${H - BOTTOM} L${LEFT},${H - BOTTOM} Z`;
 
   const dots = values
     .map((v, i) => `<circle class="dot" cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="3"></circle>`)
     .join('');
 
   return `
-    <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"
+    <svg class="chart${alt ? ' alt' : ''}" viewBox="0 0 ${W} ${H}"
          role="img" aria-label="График: от ${Math.round(min)} до ${Math.round(max)}">
-      <line class="grid" x1="${PAD}" y1="${PAD}" x2="${W - PAD}" y2="${PAD}"></line>
-      <line class="grid" x1="${PAD}" y1="${H - PAD}" x2="${W - PAD}" y2="${H - PAD}"></line>
+      <line class="grid" x1="${LEFT}" y1="${TOP}" x2="${W - RIGHT}" y2="${TOP}"></line>
+      <line class="grid" x1="${LEFT}" y1="${H - BOTTOM}" x2="${W - RIGHT}" y2="${H - BOTTOM}"></line>
 
       <path class="area" d="${area}"></path>
       <path class="line" d="${line}"></path>
       ${dots}
 
-      <text class="label" x="2" y="${PAD + 4}">${Math.round(max)}</text>
-      <text class="label" x="2" y="${H - PAD + 4}">${Math.round(min)}</text>
+      <text class="label" x="0" y="${TOP + 3}">${Math.round(max)}</text>
+      <text class="label" x="0" y="${H - BOTTOM + 3}">${Math.round(min)}</text>
+
+      <text class="label" x="${LEFT}" y="${H - 8}">${escape(shortDate(dates[0]))}</text>
+      <text class="label" x="${W - RIGHT}" y="${H - 8}" text-anchor="end">
+        ${escape(shortDate(dates[dates.length - 1]))}
+      </text>
     </svg>
   `;
 }

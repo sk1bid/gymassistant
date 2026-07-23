@@ -17,6 +17,24 @@ import { initData, timeZone } from './tg.js';
  */
 const BASE = new URL('.', document.baseURI);
 
+/**
+ * Последние ответы на GET.
+ *
+ * Нужен не ради экономии запросов, а ради ощущения: раздел рисуется мгновенно из
+ * того, что уже известно, а свежие данные приезжают следом и обновляют экран, если
+ * что-то изменилось. Иначе каждый переход упирался в круговую задержку — при полусотне
+ * миллисекунд до сервера и десятке запросов к базе это читается как «подтормаживает».
+ *
+ * Живёт только в памяти вкладки: закрыли приложение — кэша нет. Показывать вчерашние
+ * данные на холодном старте нельзя, а в пределах одной сессии они заведомо свежие.
+ */
+const cache = new Map();
+
+/** Последний известный ответ или undefined. Ответ отдаётся как есть, копия не делается. */
+export function cached(path) {
+  return cache.get(path);
+}
+
 async function request(method, path, body) {
   const response = await fetch(new URL(path, BASE), {
     method,
@@ -35,6 +53,15 @@ async function request(method, path, body) {
     // detail приходит от FastAPI: и от наших HTTPException, и от валидации схем.
     const detail = typeof data.detail === 'string' ? data.detail : 'ошибка сервера';
     throw new Error(detail);
+  }
+
+  if (method === 'GET') {
+    cache.set(path, data);
+  } else {
+    // Любая запись способна поменять что угодно: добавили упражнение — поехали
+    // и день, и расписание, и главная. Выборочная инвалидация здесь была бы
+    // источником экранов, показывающих неправду; чистим целиком.
+    cache.clear();
   }
 
   return data;
@@ -96,5 +123,6 @@ export const api = {
   historyDetail: (id) => request('GET', `api/history/${id}`),
 
   stats:            () => request('GET', 'api/stats'),
+  activity:         (weeks = 18) => request('GET', `api/stats/activity?weeks=${weeks}`),
   exerciseProgress: (id) => request('GET', `api/stats/exercise/${id}`),
 };

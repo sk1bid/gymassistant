@@ -54,61 +54,49 @@ function drawEntry() {
   const startReps = previous?.reps ?? exercise.reps;
 
   render(`
-    <div class="card">
-      <div class="row">
-        <span class="hint">${escape(state.day?.day_of_week || '')}</span>
+    <div class="row">
+      <span class="overline flush">
         ${current.is_circuit
-          ? `<span class="pill">Круг ${current.round_number} из ${current.total_rounds}</span>`
-          : ''}
-      </div>
-
-      <div class="exercise-name">${escape(exercise.name)}</div>
-      <div class="hint">Подход ${current.set_number} из ${current.total_sets}</div>
-
-      <div class="row" style="margin-top:14px">
-        <span class="hint">Прошлый раз</span>
-        <span>${previous ? `${weight(previous.weight)} кг × ${previous.reps}` : '—'}</span>
-      </div>
-      <div class="row">
-        <span class="hint">Рекорд</span>
-        <span>${exercise.record ? `${weight(exercise.record)} кг` : '—'}</span>
-      </div>
-
-      <div class="progress"><div style="width:${(progress.done / progress.total) * 100}%"></div></div>
+          ? `круг ${current.round_number} из ${current.total_rounds}`
+          : `подход ${current.set_number} из ${current.total_sets}`}
+      </span>
+      <span class="overline flush">${escape(state.day?.day_of_week || '')}</span>
     </div>
 
-    ${exercise.ai ? aiCard(exercise.ai) : ''}
+    <div class="exercise-name">${escape(exercise.name)}</div>
+    <div class="progress"><div style="width:${(progress.done / progress.total) * 100}%"></div></div>
 
-    <div class="card">
-      <label>Вес</label>
-      <div class="stepper">
-        <button data-step="weight" data-delta="-2.5">−</button>
-        <div class="value">
-          <input id="weight" type="number" inputmode="decimal" step="2.5" value="${weight(startWeight)}">
-          <div class="unit">кг</div>
-        </div>
-        <button data-step="weight" data-delta="2.5">+</button>
-      </div>
-      <div class="delta" id="weight-delta"></div>
+    <div class="meta">
+      <span>прошлый раз <b>${previous ? `${weight(previous.weight)} × ${previous.reps}` : '—'}</b></span>
+      <span class="sep">·</span>
+      <span>рекорд <b>${exercise.record ? `${weight(exercise.record)} кг` : '—'}</b></span>
     </div>
 
-    <div class="card">
-      <label>Повторения</label>
-      <div class="stepper">
-        <button data-step="reps" data-delta="-1">−</button>
-        <div class="value">
-          <input id="reps" type="number" inputmode="numeric" step="1" value="${startReps}">
-          <div class="unit">раз</div>
-        </div>
-        <button data-step="reps" data-delta="1">+</button>
+    <div class="stepper mt-4">
+      <button data-step="weight" data-delta="-2.5">−</button>
+      <div class="value">
+        <input id="weight" type="number" inputmode="decimal" step="2.5" value="${weight(startWeight)}">
+        <div class="unit">кг</div>
       </div>
-      <div class="delta" id="reps-delta"></div>
+      <button data-step="weight" data-delta="2.5">+</button>
+    </div>
+    <div class="delta" id="weight-delta"></div>
+
+    ${aiLine(exercise.ai, startWeight)}
+
+    <div class="stepper compact mt-4">
+      <button data-step="reps" data-delta="-1">−</button>
+      <div class="value">
+        <input id="reps" type="number" inputmode="numeric" step="1" value="${startReps}">
+        <div class="unit">повторений</div>
+      </div>
+      <button data-step="reps" data-delta="1">+</button>
     </div>
 
     ${recordedSets()}
     ${planList()}
 
-    <button class="btn danger" id="finish">Закончить тренировку</button>
+    <button class="btn danger mt-4" id="finish">Закончить тренировку</button>
   `);
 
   bindSteppers();
@@ -120,21 +108,26 @@ function drawEntry() {
   redrawDeltas();
 }
 
-function aiCard(ai) {
+/**
+ * Совет ИИ — только если он отличается от того, что уже стоит в поле.
+ *
+ * Раньше блок висел всегда, и в самом частом случае получалось «рекомендую 20 кг»
+ * над полем, где и так набрано 20: целая карточка ради подтверждения. Совет имеет
+ * смысл ровно тогда, когда он предлагает изменить вес.
+ */
+function aiLine(ai, currentWeight) {
+  if (!ai) return '';
+  if (Math.abs(ai.next_weight - currentWeight) < 0.01) return '';
+
   const plates = ai.plates_each_side?.length
-    ? `<div class="hint" style="margin-top:4px">Блины: ${ai.plates_each_side.join(' + ')} на сторону</div>`
+    ? ` · блины ${ai.plates_each_side.join(' + ')} на сторону`
     : '';
 
   return `
-    <div class="card tight">
-      <div class="row">
-        <div>
-          <span class="pill ai">ИИ</span>
-          <span style="margin-left:8px">Рекомендую <b>${weight(ai.next_weight)} кг</b></span>
-          ${plates}
-        </div>
-        <button class="btn secondary small" id="use-ai">Взять</button>
-      </div>
+    <div class="ai-line">
+      <span class="pill ai">ИИ</span>
+      <span>советует <b>${weight(ai.next_weight)} кг</b>${plates}</span>
+      <button id="use-ai">Взять</button>
     </div>
   `;
 }
@@ -146,40 +139,40 @@ function recordedSets() {
 
   return `
     <div class="section-title">Записано</div>
-    <div class="card">
-      ${done.map((s, i) => `
-        <div class="set-chip" data-set="${s.id}" data-weight="${s.weight}" data-reps="${s.reps}">
-          <span class="n">Подход ${i + 1}</span>
-          <span>${weight(s.weight)} кг × ${s.reps}</span>
-        </div>
-      `).join('')}
-      <div class="hint" style="margin-top:8px">Нажмите на подход, чтобы исправить</div>
-    </div>
+    ${done.map((s, i) => `
+      <div class="set-chip" data-set="${s.id}" data-weight="${s.weight}" data-reps="${s.reps}">
+        <span class="n">Подход ${i + 1}</span>
+        <span class="v">${weight(s.weight)} кг × ${s.reps}</span>
+      </div>
+    `).join('')}
+    <div class="hint mt-2">Нажмите на подход, чтобы исправить</div>
   `;
 }
 
 function planList() {
   const doneCount = state.progress.done;
 
-  return `
-    <div class="section-title">План</div>
-    <div class="card">
-      ${state.plan.map((step, i) => {
-        const status = i < doneCount ? 'done' : (i === doneCount ? 'now' : '');
-        const mark = i < doneCount ? '✓' : (step.is_circuit ? '↻' : '•');
-        const suffix = step.is_circuit
-          ? `круг ${step.round_number}/${step.total_rounds}`
-          : `подход ${step.set_number}/${step.total_sets}`;
+  const left = state.progress.total - doneCount;
 
-        return `
-          <div class="plan-item ${status}">
-            <span class="mark">${mark}</span>
-            <span class="grow">${escape(step.name)}</span>
-            <span class="hint">${suffix}</span>
-          </div>
-        `;
-      }).join('')}
-    </div>
+  return `
+    <details class="fold">
+      <summary>План · осталось ${left}</summary>
+    ${state.plan.map((step, i) => {
+      const status = i < doneCount ? 'done' : (i === doneCount ? 'now' : '');
+      const mark = i < doneCount ? '✓' : (step.is_circuit ? '↻' : '·');
+      const suffix = step.is_circuit
+        ? `круг ${step.round_number}/${step.total_rounds}`
+        : `подход ${step.set_number}/${step.total_sets}`;
+
+      return `
+        <div class="plan-item ${status}">
+          <span class="mark">${mark}</span>
+          <span class="grow">${escape(step.name)}</span>
+          <span class="num">${suffix}</span>
+        </div>
+      `;
+    }).join('')}
+    </details>
   `;
 }
 
@@ -190,27 +183,31 @@ function drawRest() {
   const C = 2 * Math.PI * R;
 
   render(`
-    <div class="card" style="text-align:center">
-      <div class="ring">
-        <svg width="168" height="168">
-          <circle class="bg" cx="84" cy="84" r="${R}"></circle>
-          <circle class="fg" id="arc" cx="84" cy="84" r="${R}"
-                  stroke-dasharray="${C}" stroke-dashoffset="0"></circle>
-        </svg>
-        <div class="clock" id="clock">${clock(rest.secondsLeft())}</div>
-      </div>
+    <div class="overline flush center">отдых</div>
 
-      <div class="hint" style="margin-bottom:16px">
-        ${next ? `Дальше: <b>${escape(next.exercise.name)}</b>, подход ${next.set_number}` : ''}
-      </div>
-
-      <button class="btn" id="skip">Закончить отдых</button>
-      <button class="btn ghost" id="add-minute" style="margin-top:8px">+1 минута</button>
+    <div class="ring">
+      <svg width="168" height="168">
+        <circle class="bg" cx="84" cy="84" r="${R}"></circle>
+        <circle class="fg" id="arc" cx="84" cy="84" r="${R}"
+                stroke-dasharray="${C}" stroke-dashoffset="0"></circle>
+      </svg>
+      <div class="clock" id="clock">${clock(rest.secondsLeft())}</div>
     </div>
 
-    <div class="hint" style="text-align:center;padding:0 16px">
+    ${next ? `
+      <div class="card accent center">
+        <div class="overline flush">дальше</div>
+        <div class="lead mt-1">${escape(next.exercise.name)}</div>
+        <div class="hint">подход ${next.set_number} из ${next.total_sets}</div>
+      </div>
+    ` : ''}
+
+    <button class="btn mt-4" id="skip">Закончить отдых</button>
+    <button class="btn outlined mt-2" id="add-minute">+1 минута</button>
+
+    <p class="hint center mt-4">
       Можно закрыть приложение — бот напомнит в чате, когда отдых кончится.
-    </div>
+    </p>
   `);
 
   mainButton(null, null);
@@ -249,13 +246,15 @@ function drawFinished() {
   const done = state.sets;
   const totalVolume = done.reduce((sum, s) => sum + s.weight * s.reps, 0);
 
+  // Итог — это одно число, поэтому оно и набрано как заголовок, а не спрятано в строку.
   render(`
-    <div class="card" style="text-align:center">
-      <div style="font-size:52px">💪</div>
-      <h2>Тренировка отработана</h2>
-      <div class="hint">${plural(done.length, 'подход', 'подхода', 'подходов')} · ${volume(totalVolume)}</div>
+    <div class="overline flush center">тренировка отработана</div>
+    <div class="card accent center mt-3">
+      <div class="display">${volume(totalVolume)}</div>
+      <div class="hint mt-1">поднято за сегодня</div>
     </div>
-    <button class="btn" id="finish">Завершить</button>
+    <p class="hint center">${plural(done.length, 'подход', 'подхода', 'подходов')}</p>
+    <button class="btn mt-4" id="finish">Завершить</button>
   `);
 
   mainButton('Завершить', finish);
@@ -295,22 +294,23 @@ function bindSteppers() {
   });
 }
 
-/** Подсказка «+2.5 кг к прошлому разу» — то, ради чего вообще смотрят на прошлый раз. */
+/**
+ * Подсказка «+2.5 кг к прошлому разу» — то, ради чего вообще смотрят на прошлый раз.
+ *
+ * Показывается только при расхождении. Раньше при равенстве под обоими степперами
+ * писалось «как в прошлый раз» — две строки текста ровно про то, что ничего
+ * не изменилось. Повторения не комментируются вовсе: их и так видно в плане.
+ */
 function redrawDeltas() {
   const previous = previousSet();
-  const weightNode = document.getElementById('weight-delta');
-  const repsNode = document.getElementById('reps-delta');
-  if (!weightNode || !previous) return;
+  const node = document.getElementById('weight-delta');
+  if (!node || !previous) return;
 
-  const show = (node, diff, unit) => {
-    node.className = `delta ${diff > 0 ? 'up' : diff < 0 ? 'down' : ''}`;
-    node.textContent = diff === 0
-      ? 'как в прошлый раз'
-      : `${diff > 0 ? '+' : ''}${Math.round(diff * 10) / 10} ${unit}`;
-  };
+  const diff = (parseFloat(document.getElementById('weight').value) || 0) - previous.weight;
+  const rounded = Math.round(diff * 10) / 10;
 
-  show(weightNode, (parseFloat(document.getElementById('weight').value) || 0) - previous.weight, 'кг');
-  show(repsNode, (parseInt(document.getElementById('reps').value, 10) || 0) - previous.reps, 'повт.');
+  node.className = `delta ${rounded > 0 ? 'up' : rounded < 0 ? 'down' : ''}`;
+  node.textContent = rounded === 0 ? '' : `${rounded > 0 ? '+' : ''}${rounded} кг к прошлому разу`;
 }
 
 async function submitSet() {
@@ -358,7 +358,7 @@ function bindRecordedSets() {
         <input type="number" id="edit-reps" inputmode="numeric" value="${currentReps}">
       </div>
       <button class="btn" id="save">Сохранить</button>
-      <button class="btn danger" id="remove" style="margin-top:8px">Удалить подход</button>
+      <button class="btn danger mt-2" id="remove">Удалить подход</button>
     `);
 
     form.node.querySelector('#save').onclick = async () => {
@@ -395,16 +395,16 @@ async function finish() {
   mainButton(null, null);
 
   render(`
-    <div class="card" style="text-align:center">
-      <div style="font-size:52px">🏁</div>
-      <h2>Готово</h2>
-      <div class="hint">
-        ${plural(summary.sets, 'подход', 'подхода', 'подходов')} ·
-        ${plural(summary.exercises, 'упражнение', 'упражнения', 'упражнений')} ·
-        ${volume(summary.volume)}
-      </div>
+    <div class="overline flush center">готово</div>
+    <div class="card accent center mt-3">
+      <div class="display">${volume(summary.volume)}</div>
+      <div class="hint mt-1">общий объём</div>
     </div>
-    <button class="btn" id="home">На главную</button>
+    <p class="hint center">
+      ${plural(summary.sets, 'подход', 'подхода', 'подходов')} ·
+      ${plural(summary.exercises, 'упражнение', 'упражнения', 'упражнений')}
+    </p>
+    <button class="btn mt-4" id="home">На главную</button>
   `);
 
   on('#home', 'click', () => go('/'));
