@@ -415,3 +415,33 @@ async def orm_clear_rest_message(session: AsyncSession, timer_id: int):
         update(RestTimer).where(RestTimer.id == timer_id).values(message_id=None)
     )
     await session.commit()
+
+
+async def orm_get_exercises_of_days(session: AsyncSession, day_ids) -> dict[int, list[Exercise]]:
+    """
+    Упражнения сразу нескольких дней — ОДНИМ запросом.
+
+    Наивный путь (звать orm_get_exercises на каждый день) стоил восьми обращений
+    к постгресу на один экран: список дней плюс по запросу на каждый из семи дней
+    недели. Круговые задержки складываются последовательно, и главный экран
+    ощутимо «думал» перед появлением.
+
+    Сортировка по (день, позиция) — та же, что в orm_get_exercises: порядок
+    упражнений внутри дня не косметика, подряд идущие круговые собираются
+    в один круговой блок.
+    """
+    ids = list(day_ids)
+    if not ids:
+        return {}
+
+    stmt = (
+        select(Exercise)
+        .where(Exercise.training_day_id.in_(ids))
+        .order_by(Exercise.training_day_id, Exercise.position)
+    )
+
+    grouped: dict[int, list[Exercise]] = {day_id: [] for day_id in ids}
+    for exercise in (await session.execute(stmt)).scalars():
+        grouped.setdefault(exercise.training_day_id, []).append(exercise)
+
+    return grouped

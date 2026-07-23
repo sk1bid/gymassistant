@@ -1,4 +1,6 @@
 """Профиль, история тренировок и прогресс."""
+from datetime import date, timedelta, timezone
+
 from fastapi import APIRouter
 
 from database.orm_extra import (
@@ -16,10 +18,11 @@ from database.orm_query import (
     orm_update_user,
 )
 from miniapp.db import Session
-from miniapp.deps import CurrentUser
+from miniapp.deps import ClientTz, CurrentUser
 from miniapp.ownership import own_exercise, own_training_session
 from miniapp.routers.training import parse_session_id
 from miniapp.schemas import ProfileIn
+from services.clock import today_in
 
 router = APIRouter(prefix="/api", tags=["profile"])
 
@@ -137,6 +140,65 @@ async def stats(user: CurrentUser, session: Session):
     return {
         "ok": True,
         "records": sorted(records.values(), key=lambda r: r["max_weight"], reverse=True),
+    }
+
+
+@router.get("/stats/activity")
+async def activity(user: CurrentUser, session: Session, tz: ClientTz, weeks: int = 18):
+    """
+    Календарь тренировок — «квадратики», как на GitHub.
+
+    Сетка всегда начинается с понедельника: колонка = неделя, строка = день недели.
+    Без выравнивания на понедельник столбцы поехали бы, и соседние квадраты
+    оказались бы разными днями недели — читать такую карту нельзя.
+
+    Дата тренировки хранится в naive-UTC, а раскладывать надо по КАЛЕНДАРЮ
+    пользователя: тренировка в 23:30 по Новосибирску — это 16:30 UTC того же дня,
+    а вот в 06:00 по НСК — уже 23:00 UTC предыдущего. Без перевода в пояс клиента
+    часть тренировок села бы в соседнюю клетку.
+
+    Отдельного ORM-запроса нет намеренно: сводка по тренировкам уже посчитана
+    для истории и профиля, здесь она просто схлопывается по дням.
+    """
+    weeks = max(1, min(weeks, 53))
+    today = today_in(tz)
+    start = today - timedelta(days=today.weekday() + 7 * (weeks - 1))
+
+    rows = await orm_get_sessions_summary(session, user.user_id, limit=1000)
+
+    by_day: dict[date, dict] = {}
+    for row in rows:
+        if not row.date:
+            continue
+
+        local = row.date.replace(tzinfo=timezone.utc).astimezone(tz).date()
+        if not (start <= local <= today):
+            continue
+
+        cell = by_day.setdefault(local, {"sets": 0, "volume": 0.0, "sessions": 0})
+        cell["sets"] += row.sets
+        cell["volume"] += float(row.volume)
+        cell["sessions"] += 1
+
+    days = []
+    for offset in range((today - start).days + 1):
+        current = start + timedelta(days=offset)
+        cell = by_day.get(current)
+        days.append({
+            "date": current.isoformat(),
+            "sets": cell["sets"] if cell else 0,
+            "volume": cell["volume"] if cell else 0.0,
+        })
+
+    return {
+        "ok": True,
+        "start": start.isoformat(),
+        "today": today.isoformat(),
+        "weeks": weeks,
+        "days": days,
+        # Порог насыщенности считает клиент, но максимум нужен и для подписи «лучший день».
+        "max_sets": max((d["sets"] for d in days), default=0),
+        "sessions": sum(c["sessions"] for c in by_day.values()),
     }
 
 

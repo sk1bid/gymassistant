@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from database.orm_extra import (
     orm_delete_empty_sessions,
     orm_get_active_session,
+    orm_get_exercises_of_days,
     orm_get_rest_timer,
 )
 from database.orm_query import (
@@ -30,18 +31,24 @@ def today_ru(tz: ZoneInfo) -> str:
 
 
 async def week(session: Session, program_id: int) -> list[dict]:
-    """Дни программы в порядке Пн→Вс — в БД они лежат в порядке вставки."""
+    """
+    Дни программы в порядке Пн→Вс — в БД они лежат в порядке вставки.
+
+    Упражнения всех семи дней забираются одним запросом. Раньше здесь был вызов
+    orm_get_exercises внутри цикла: семь последовательных обращений к постгресу
+    на каждое открытие главной и расписания, и их задержки складывались — экран
+    заметно «думал» перед появлением.
+    """
     days = await orm_get_training_days(session, program_id)
     by_name = {d.day_of_week.strip().lower(): d for d in days}
 
-    out = []
-    for name in WEEK_DAYS_RU:
-        day = by_name.get(name.lower())
-        if not day:
-            continue
-        exercises = await orm_get_exercises(session, day.id)
-        out.append({**day_json(day), "exercises": [exercise_json(e) for e in exercises]})
-    return out
+    ordered = [by_name[name.lower()] for name in WEEK_DAYS_RU if name.lower() in by_name]
+    exercises = await orm_get_exercises_of_days(session, [d.id for d in ordered])
+
+    return [
+        {**day_json(day), "exercises": [exercise_json(e) for e in exercises.get(day.id, [])]}
+        for day in ordered
+    ]
 
 
 @router.get("/bootstrap")
