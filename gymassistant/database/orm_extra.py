@@ -48,14 +48,16 @@ def exercise_identity(exercise: Exercise):
     return Exercise.user_exercise_id == exercise.user_exercise_id
 
 
-def _user_sets(user_id: int, exercise: Exercise):
-    """Базовый запрос: все подходы пользователя по этому упражнению во всех программах."""
-    return (
-        select(Set)
-        .join(Exercise, Set.exercise_id == Exercise.id)
-        .join(TrainingSession, Set.training_session_id == TrainingSession.id)
-        .where(TrainingSession.user_id == user_id, exercise_identity(exercise))
-    )
+def _lifted():
+    """
+    Только то, что человек реально поднял.
+
+    Пропущенный подход (`skipped`) — полноценная строка: он двигает план тренировки
+    наравне с выполненным. Но в рекорды, объём, графики и «прошлый раз» ему нельзя:
+    там нужен результат, а результата не было. Условие вынесено в помощник, чтобы
+    не забыть его в одном месте из шести и не получить рекорд «0 кг».
+    """
+    return Set.skipped.is_(False)
 
 
 async def orm_get_max_weight_by_identity(session: AsyncSession, user_id: int, exercise: Exercise) -> float:
@@ -64,7 +66,7 @@ async def orm_get_max_weight_by_identity(session: AsyncSession, user_id: int, ex
         select(func.coalesce(func.max(Set.weight), 0.0))
         .join(Exercise, Set.exercise_id == Exercise.id)
         .join(TrainingSession, Set.training_session_id == TrainingSession.id)
-        .where(TrainingSession.user_id == user_id, exercise_identity(exercise))
+        .where(TrainingSession.user_id == user_id, exercise_identity(exercise), _lifted())
     )
     return float((await session.execute(stmt)).scalar() or 0.0)
 
@@ -75,7 +77,7 @@ async def orm_get_max_volume_by_identity(session: AsyncSession, user_id: int, ex
         select(func.coalesce(func.max(Set.weight * Set.repetitions), 0.0))
         .join(Exercise, Set.exercise_id == Exercise.id)
         .join(TrainingSession, Set.training_session_id == TrainingSession.id)
-        .where(TrainingSession.user_id == user_id, exercise_identity(exercise))
+        .where(TrainingSession.user_id == user_id, exercise_identity(exercise), _lifted())
     )
     return float((await session.execute(stmt)).scalar() or 0.0)
 
@@ -94,7 +96,7 @@ async def orm_get_prev_sets_by_identity(
         select(TrainingSession.id)
         .join(Set, TrainingSession.id == Set.training_session_id)
         .join(Exercise, Set.exercise_id == Exercise.id)
-        .where(TrainingSession.user_id == user_id, exercise_identity(exercise))
+        .where(TrainingSession.user_id == user_id, exercise_identity(exercise), _lifted())
     )
     if current_session_id is not None:
         prev_session = prev_session.where(TrainingSession.id != current_session_id)
@@ -104,25 +106,10 @@ async def orm_get_prev_sets_by_identity(
     stmt = (
         select(Set)
         .join(Exercise, Set.exercise_id == Exercise.id)
-        .where(Set.training_session_id == prev_session, exercise_identity(exercise))
+        .where(Set.training_session_id == prev_session, exercise_identity(exercise), _lifted())
         .order_by(Set.id)
     )
     return (await session.execute(stmt)).scalars().all()
-
-
-async def orm_get_last_sets_by_identity(
-    session: AsyncSession,
-    user_id: int,
-    exercise: Exercise,
-    limit: int = 5,
-):
-    """
-    Последние N подходов по упражнению — вход для LSTM.
-    Порядок: старые → новые, как ждёт `services.neiro_api.get_press_prediction`.
-    """
-    stmt = _user_sets(user_id, exercise).order_by(Set.created.desc()).limit(limit)
-    sets = (await session.execute(stmt)).scalars().all()
-    return list(reversed(sets))
 
 
 async def orm_get_exercise_progress(session: AsyncSession, user_id: int, exercise: Exercise):
@@ -139,7 +126,7 @@ async def orm_get_exercise_progress(session: AsyncSession, user_id: int, exercis
         )
         .join(Set, TrainingSession.id == Set.training_session_id)
         .join(Exercise, Set.exercise_id == Exercise.id)
-        .where(TrainingSession.user_id == user_id, exercise_identity(exercise))
+        .where(TrainingSession.user_id == user_id, exercise_identity(exercise), _lifted())
         .group_by(TrainingSession.id, TrainingSession.date)
         .order_by(TrainingSession.date)
     )
@@ -161,10 +148,41 @@ async def orm_get_sets_of_session(session: AsyncSession, training_session_id):
     return (await session.execute(stmt)).scalars().all()
 
 
+async def orm_add_skipped_sets(session: AsyncSession, training_session_id, exercise_id: int, count: int):
+    """
+    Отмечает `count` подходов несделанными.
+
+    Вес и повторения нулевые — из статистики такие строки всё равно исключены
+    (`_lifted`), а нули честнее любого выдуманного числа. Порядок вставки важен:
+    шаг тренировки считается по количеству строк в плановом порядке, поэтому
+    пропуски должны лечь ровно на то место, где человек их поставил.
+    """
+    session.add_all([
+        Set(
+            exercise_id=exercise_id,
+            weight=0,
+            repetitions=0,
+            training_session_id=training_session_id,
+            skipped=True,
+        )
+        for _ in range(count)
+    ])
+    await session.commit()
+
+
 async def orm_update_set(session: AsyncSession, set_id: int, weight: float, repetitions: int):
-    """Правим уже записанный подход — ошибиться на степпере легко."""
+    """
+    Правим уже записанный подход — ошибиться на степпере легко.
+
+    Правка снимает и отметку «пропущен»: раз человек вводит вес и повторения,
+    значит подход всё-таки сделан (нулевых повторений схема не принимает). Без
+    этого исправленный пропуск остался бы вне рекордов и объёма — то есть правка
+    как будто не сработала бы.
+    """
     await session.execute(
-        update(Set).where(Set.id == set_id).values(weight=weight, repetitions=repetitions)
+        update(Set)
+        .where(Set.id == set_id)
+        .values(weight=weight, repetitions=repetitions, skipped=False)
     )
     await session.commit()
 
@@ -189,13 +207,41 @@ async def orm_get_sessions_summary(session: AsyncSession, user_id: int, limit: i
             func.count(func.distinct(Set.exercise_id)).label("exercises"),
         )
         .join(Set, TrainingSession.id == Set.training_session_id)
-        .where(TrainingSession.user_id == user_id)
+        .where(TrainingSession.user_id == user_id, _lifted())
         .group_by(TrainingSession.id, TrainingSession.date, TrainingSession.note)
         .order_by(TrainingSession.date.desc())
         .limit(limit)
         .offset(offset)
     )
     return (await session.execute(stmt)).all()
+
+
+async def orm_get_trained_day_ids(session: AsyncSession, user_id: int, since) -> set[int]:
+    """
+    Дни программы, по которым тренировались начиная с `since`.
+
+    Нужно, чтобы понять, что пропущено. Сравнение идёт по дню ПРОГРАММЫ, а не по
+    календарной дате: отработать понедельник во вторник — это не пропуск, а перенос,
+    и напоминать о нём не надо.
+
+    Тренировкой считается сессия, в которой есть хотя бы один подход. Пустая — это
+    «открыл и передумал»: она и так живёт до первой уборки (`orm_delete_empty_sessions`),
+    и закрывать ею день недели нельзя, иначе случайное нажатие «Начать» гасило бы
+    напоминание о невыполненной тренировке. Пропущенные подходы при этом считаются:
+    человек прошёл по упражнениям и решил, что сегодня не идёт, — день закрыт.
+    """
+    has_sets = select(Set.id).where(Set.training_session_id == TrainingSession.id).exists()
+    stmt = (
+        select(TrainingSession.training_day_id)
+        .where(
+            TrainingSession.user_id == user_id,
+            TrainingSession.date >= since,
+            TrainingSession.training_day_id.isnot(None),
+            has_sets,
+        )
+        .distinct()
+    )
+    return {row for row in (await session.execute(stmt)).scalars().all()}
 
 
 async def orm_delete_empty_sessions(session: AsyncSession, user_id: int, older_than_hours: int = 12):
@@ -280,7 +326,6 @@ PROGRAM_SETTINGS = (
     "circular_rounds",
     "circular_rest_between_rounds",
     "circular_rest_between_exercise",
-    "quiet_rest_pings",
 )
 
 
@@ -311,7 +356,6 @@ async def orm_start_rest_timer(
     chat_id: int,
     seconds: int,
     next_up: str | None = None,
-    quiet: bool = True,
 ) -> RestTimer:
     """
     Ставит (или перезаписывает) таймер отдыха. У пользователя он ровно один.
@@ -335,8 +379,6 @@ async def orm_start_rest_timer(
     # ближайший пинг «первым», а он перед отправкой удаляет старое message_id
     # (_delete_quietly в воркере). Так прошлое «окончено» гаснет ровно тогда, когда
     # начинается новый отдых, и в чате остаётся одно живое сообщение бота.
-    timer.warned = False
-    timer.quiet = quiet
     timer.next_up = (next_up or "")[:150] or None
     timer.active = True
 
@@ -363,17 +405,16 @@ async def orm_get_active_rest_timers(session: AsyncSession):
     return (await session.execute(stmt)).scalars().all()
 
 
-async def orm_save_rest_ping(
-    session: AsyncSession,
-    timer_id: int,
-    message_id: int | None,
-    warned: bool | None = None,
-):
-    """Запоминаем, что и когда отправили: следующий пинг сначала удалит это сообщение."""
-    values = {"last_ping": utcnow(), "message_id": message_id}
-    if warned is not None:
-        values["warned"] = warned
-    await session.execute(update(RestTimer).where(RestTimer.id == timer_id).values(**values))
+async def orm_save_rest_ping(session: AsyncSession, timer_id: int, message_id: int | None):
+    """
+    Запоминаем, что и когда отправили: следующий пинг сначала удалит это сообщение,
+    а от last_ping отсчитывается следующая граница минуты (_should_ping в воркере).
+    """
+    await session.execute(
+        update(RestTimer)
+        .where(RestTimer.id == timer_id)
+        .values(last_ping=utcnow(), message_id=message_id)
+    )
     await session.commit()
 
 

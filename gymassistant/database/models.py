@@ -121,9 +121,6 @@ class TrainingProgram(Base):
                                                               default=300)  # 5 минут стандарт
     circular_rest_between_exercise: Mapped[int] = mapped_column(Integer(), nullable=False,
                                                                 default=60)  # 1 минут стандарт
-    # Тихие промежуточные пинги отдыха: минутные напоминания приходят без звука,
-    # звонко пингуем только за 30 секунд до конца и в момент окончания.
-    quiet_rest_pings: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
 
     user: Mapped['User'] = relationship(backref='training_program', lazy='select')
     training_days: Mapped[List['TrainingDay']] = relationship(
@@ -280,15 +277,13 @@ class RestTimer(Base):
 
     ends_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False)
     total_seconds: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
-    # Когда воркер последний раз слал сообщение (нужно, чтобы пинговать раз в минуту,
-    # а не на каждой итерации цикла).
+    # Когда воркер последний раз слал сообщение. От него отсчитывается следующая
+    # граница минуты; пока пинга не было — точкой отсчёта служит начало отдыха
+    # (ends_at минус total_seconds).
     last_ping: Mapped[DateTime] = mapped_column(DateTime, nullable=True)
     # Что удалить перед отправкой следующего пинга. Именно удалить и прислать новое:
     # редактирование сообщения в Telegram не даёт ни пуша, ни вибрации.
     message_id: Mapped[int] = mapped_column(Integer(), nullable=True)
-    # Звонкий пинг за 30 секунд до конца шлём один раз — здесь отмечаем, что уже слали.
-    warned: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
-    quiet: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
 
     # Что будет после отдыха — показываем в тексте пинга («Дальше: Жим лёжа, подход 2»).
     next_up: Mapped[str] = mapped_column(String(150), nullable=True)
@@ -309,6 +304,17 @@ class Set(Base):
     )
     weight: Mapped[float] = mapped_column(Float(), nullable=False)
     repetitions: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Подход не сделан: не хватило сил, занят снаряд, заболело плечо.
+    #
+    # Это тоже ФАКТ тренировки, а не её отсутствие, поэтому строка, а не пробел.
+    # Движок шага (services/workout.py) считает план по расхождению с записанными
+    # подходами — пропущенный двигает план дальше наравне с выполненным, иначе
+    # уйти с упражнения можно было бы только соврав про вес или бросив тренировку.
+    #
+    # При этом в объём, рекорды и «прошлый раз» он НЕ идёт: там нужно то, что
+    # человек поднял, а поднял он ноль. Вес и повторения у такой строки нулевые.
+    skipped: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
 
     training_session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

@@ -35,7 +35,6 @@ def program_json(program: TrainingProgram, active_id: int | None) -> dict:
             "circular_rounds": program.circular_rounds,
             "circular_rest_between_rounds": program.circular_rest_between_rounds,
             "circular_rest_between_exercise": program.circular_rest_between_exercise,
-            "quiet_rest_pings": program.quiet_rest_pings,
         },
     }
 

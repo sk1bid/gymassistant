@@ -30,6 +30,13 @@ router = APIRouter(prefix="/api", tags=["profile"])
 @router.get("/profile")
 async def profile(user: CurrentUser, session: Session):
     sessions = await orm_get_sessions_summary(session, user.user_id, limit=1000)
+
+    # Программы приезжают сюда, потому что вкладки «Программы» больше нет: раздел
+    # живёт в профиле, и строке-ссылке нужно имя активной программы для подписи.
+    # Отдельным запросом с фронта это была бы вторая круговая задержка ради одной строки.
+    programs = await orm_get_programs(session, user.user_id)
+    active = next((p for p in programs if p.id == user.actual_program_id), None)
+
     return {
         "ok": True,
         "user": {"name": user.name, "weight": user.weight},
@@ -38,6 +45,7 @@ async def profile(user: CurrentUser, session: Session):
             "sets": sum(s.sets for s in sessions),
             "volume": sum(float(s.volume) for s in sessions),
         },
+        "programs": {"count": len(programs), "active": active.name if active else None},
     }
 
 
@@ -196,7 +204,8 @@ async def activity(user: CurrentUser, session: Session, tz: ClientTz, weeks: int
         "today": today.isoformat(),
         "weeks": weeks,
         "days": days,
-        # Порог насыщенности считает клиент, но максимум нужен и для подписи «лучший день».
+        # Насыщенность клетки клиент считает сам, по квартилям своих же тренировочных
+        # дней (см. heatmap() в profile.js). Максимум остаётся как справочная величина.
         "max_sets": max((d["sets"] for d in days), default=0),
         "sessions": sum(c["sessions"] for c in by_day.values()),
     }

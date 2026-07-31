@@ -6,7 +6,8 @@ Bot подменён фейком — Telegram нам тут недоступе�
 
 * пинг — это НОВОЕ сообщение с удалением предыдущего, а не редактирование
   (редактирование в Telegram не даёт уведомления, и вся затея теряет смысл);
-* промежуточные минуты уходят тихо, конец отдыха — со звуком;
+* КАЖДЫЙ пинг со звуком — тихий режим убран, он отменял смысл уведомления;
+* пинги приходят на границах оставшихся минут, а стартового пинга нет;
 * таймер живёт в БД, поэтому переживает перезапуск процесса.
 """
 import os
@@ -71,6 +72,23 @@ async def db():
         yield session
 
 
+async def advance(db, seconds: int):
+    """
+    Промотать отдых вперёд, не трогая системные часы.
+
+    Конец придвигается ближе, а прошлый пинг уезжает дальше в прошлое — ровно так,
+    как это выглядело бы при настоящем ходе времени. Двигать только `ends_at` нельзя:
+    `_should_ping` считает границу минуты между `last_ping` и `ends_at`, и отдых
+    «сжался» бы вместо того, чтобы идти.
+    """
+    timer = await orm_get_rest_timer(db, USER_ID)
+    timer.ends_at -= timedelta(seconds=seconds)
+    if timer.last_ping:
+        timer.last_ping -= timedelta(seconds=seconds)
+    await db.commit()
+    return timer
+
+
 @pytest.mark.anyio
 async def test_ping_is_a_new_message_not_an_edit(db):
     """
@@ -82,67 +100,72 @@ async def test_ping_is_a_new_message_not_an_edit(db):
     bot = FakeBot()
     await orm_start_rest_timer(db, USER_ID, USER_ID, seconds=300, next_up="Жим лёжа — подход 2")
 
-    # Первый пинг: удалять нечего, сообщение уходит.
-    timer = await orm_get_rest_timer(db, USER_ID)
-    await _handle_timer(bot, db, timer)
+    # Прошла минута — первый пинг. Удалять пока нечего.
+    await _handle_timer(bot, db, await advance(db, 60))
 
     assert len(bot.sent) == 1
     assert bot.deleted == []
     assert "Жим лёжа" in bot.sent[0]["text"]
     first_message_id = bot.sent[0]["message_id"]
 
-    # Прошла минута — второй пинг сносит первое сообщение и шлёт новое.
-    timer = await orm_get_rest_timer(db, USER_ID)
-    timer.last_ping = utcnow() - timedelta(seconds=61)
-    await db.commit()
-
-    await _handle_timer(bot, db, timer)
+    # Ещё минута — второй пинг сносит первое сообщение и шлёт новое.
+    await _handle_timer(bot, db, await advance(db, 60))
 
     assert len(bot.sent) == 2
     assert bot.deleted == [first_message_id]
 
 
 @pytest.mark.anyio
-async def test_intermediate_pings_are_silent_and_the_end_is_not(db):
-    """Промежуточные минуты — без звука; за 30 секунд до конца и в конце — со звуком."""
+async def test_no_ping_at_the_very_start(db):
+    """
+    В момент старта отдыха пинга нет.
+
+    Человек только что записал подход и смотрит в приложение, где отсчёт и так идёт;
+    сообщать «отдыхайте ещё 5 мин» в ту же секунду незачем. Практическое следствие:
+    минутный отдых даёт ровно одно уведомление — «Отдых окончен!».
+    """
     bot = FakeBot()
-    await orm_start_rest_timer(db, USER_ID, USER_ID, seconds=300, quiet=True)
+    await orm_start_rest_timer(db, USER_ID, USER_ID, seconds=300)
 
-    timer = await orm_get_rest_timer(db, USER_ID)
-    await _handle_timer(bot, db, timer)
-    assert bot.sent[-1]["silent"] is True          # «отдыхайте ещё 5 мин» — тихо
+    await _handle_timer(bot, db, await orm_get_rest_timer(db, USER_ID))
+    assert bot.sent == []
 
-    # Осталось 20 секунд — предупреждение должно прозвучать.
-    timer = await orm_get_rest_timer(db, USER_ID)
-    timer.ends_at = utcnow() + timedelta(seconds=20)
-    await db.commit()
+    # Минутный отдых: до самого конца — тишина, и только потом «окончен».
+    await orm_start_rest_timer(db, USER_ID, USER_ID, seconds=60)
+    await _handle_timer(bot, db, await advance(db, 55))
+    assert bot.sent == []
 
-    await _handle_timer(bot, db, timer)
-    assert bot.sent[-1]["silent"] is False
-    assert "сек" in bot.sent[-1]["text"]  # под конец счёт идёт на секунды, не на минуты
-
-    # Время вышло — звонкое «Отдых окончен» и таймер погашен.
-    timer = await orm_get_rest_timer(db, USER_ID)
-    timer.ends_at = utcnow() - timedelta(seconds=1)
-    await db.commit()
-
-    await _handle_timer(bot, db, timer)
-    assert "Отдых окончен" in bot.sent[-1]["text"]
-    assert bot.sent[-1]["silent"] is False
-
-    assert (await orm_get_rest_timer(db, USER_ID)).active is False
+    await _handle_timer(bot, db, await advance(db, 5))
+    assert len(bot.sent) == 1
+    assert "Отдых окончен" in bot.sent[0]["text"]
 
 
 @pytest.mark.anyio
-async def test_loud_mode_pings_every_minute_with_sound(db):
-    """quiet=False — звук на каждом пинге. Это настройка программы."""
+async def test_every_ping_is_loud(db):
+    """
+    Звук на КАЖДОМ пинге, включая промежуточные минуты.
+
+    Раньше промежуточные уходили с disable_notification (настройка quiet_rest_pings,
+    по умолчанию включённая), и сообщение, ради которого телефон лежит на скамье,
+    приходило беззвучно. Тихий режим убран целиком — это регрессионный тест на то,
+    что его не вернут.
+    """
     bot = FakeBot()
-    await orm_start_rest_timer(db, USER_ID, USER_ID, seconds=300, quiet=False)
+    await orm_start_rest_timer(db, USER_ID, USER_ID, seconds=300)
 
-    timer = await orm_get_rest_timer(db, USER_ID)
-    await _handle_timer(bot, db, timer)
+    for _ in range(4):                                  # 4 мин → 3 → 2 → 1
+        await _handle_timer(bot, db, await advance(db, 60))
 
+    assert len(bot.sent) == 4
+    assert [m["silent"] for m in bot.sent] == [False] * 4
+    assert [m["text"].split("<b>")[1].split("</b>")[0] for m in bot.sent] == ["4", "3", "2", "1"]
+
+    # Время вышло — звонкое «Отдых окончен» и таймер погашен.
+    await _handle_timer(bot, db, await advance(db, 60))
+
+    assert "Отдых окончен" in bot.sent[-1]["text"]
     assert bot.sent[-1]["silent"] is False
+    assert (await orm_get_rest_timer(db, USER_ID)).active is False
 
 
 @pytest.mark.anyio
@@ -155,8 +178,7 @@ async def test_timer_survives_process_restart(db):
     await orm_start_rest_timer(db, USER_ID, USER_ID, seconds=180, next_up="Присед — подход 3")
 
     bot = FakeBot()
-    timer = await orm_get_rest_timer(db, USER_ID)
-    await _handle_timer(bot, db, timer)
+    await _handle_timer(bot, db, await advance(db, 60))
     assert len(bot.sent) == 1
 
     # Новый процесс, новый бот, ничего в памяти не осталось.
@@ -168,9 +190,7 @@ async def test_timer_survives_process_restart(db):
     assert (timer.ends_at - utcnow()).total_seconds() > 0
 
     # Пингует дальше, сносит сообщение, отправленное ещё до «рестарта».
-    timer.last_ping = utcnow() - timedelta(seconds=61)
-    await db.commit()
-    await _handle_timer(restarted, db, timer)
+    await _handle_timer(restarted, db, await advance(db, 60))
 
     assert len(restarted.sent) == 1
     assert restarted.deleted == [bot.sent[0]["message_id"]]
@@ -203,13 +223,8 @@ async def test_completion_message_is_tracked_and_cleared_by_next_rest(db):
     bot = FakeBot()
     await orm_start_rest_timer(db, USER_ID, USER_ID, seconds=300, next_up="Жим — подход 2")
 
-    timer = await orm_get_rest_timer(db, USER_ID)
-    await _handle_timer(bot, db, timer)                      # пинг отдыха
-
-    timer = await orm_get_rest_timer(db, USER_ID)
-    timer.ends_at = utcnow() - timedelta(seconds=1)
-    await db.commit()
-    await _handle_timer(bot, db, timer)                      # ведёт в _finish → «окончено»
+    await _handle_timer(bot, db, await advance(db, 60))      # пинг отдыха
+    await _handle_timer(bot, db, await advance(db, 300))     # время вышло → «окончено»
 
     done_id = bot.sent[-1]["message_id"]
     assert "Отдых окончен" in bot.sent[-1]["text"]
@@ -222,7 +237,7 @@ async def test_completion_message_is_tracked_and_cleared_by_next_rest(db):
     timer = await orm_get_rest_timer(db, USER_ID)
     assert timer.message_id == done_id
 
-    await _handle_timer(bot, db, timer)                      # первый пинг сносит прошлое «окончено»
+    await _handle_timer(bot, db, await advance(db, 60))      # первый пинг сносит прошлое «окончено»
     assert done_id in bot.deleted
 
 
@@ -236,13 +251,9 @@ async def test_final_completion_is_swept_after_ttl(db):
 
     bot = FakeBot()
     await orm_start_rest_timer(db, USER_ID, USER_ID, seconds=300)
-    timer = await orm_get_rest_timer(db, USER_ID)
-    await _handle_timer(bot, db, timer)
 
-    timer = await orm_get_rest_timer(db, USER_ID)
-    timer.ends_at = utcnow() - timedelta(seconds=1)
-    await db.commit()
-    await _handle_timer(bot, db, timer)                      # _finish → «окончено»
+    await _handle_timer(bot, db, await advance(db, 60))
+    await _handle_timer(bot, db, await advance(db, 300))      # _finish → «окончено»
     done_id = bot.sent[-1]["message_id"]
 
     await _sweep_finished(bot, db)                           # свежее — не трогаем
@@ -256,25 +267,50 @@ async def test_final_completion_is_swept_after_ttl(db):
     assert (await orm_get_rest_timer(db, USER_ID)).message_id is None
 
 
-def test_ping_text_and_schedule():
-    """Тексты и решение «пора ли пинговать» — чистые функции, проверяем напрямую."""
+def test_ping_text():
+    """Текст всегда в минутах: пинги приходят только на границах минут."""
     assert "5" in _ping_text(300, None)
     assert "Дальше: Жим" in _ping_text(300, "Жим")
-    assert "сек" in _ping_text(20, None)          # под конец считаем в секундах
+
+    # Округление вверх: 119 секунд человек считает двумя минутами, а не одной.
+    # Тик воркера идёт раз в 5 секунд, поэтому граница ловится с недолётом.
+    assert "2" in _ping_text(119, None)
+    assert "1" in _ping_text(60, None)
+
+
+def test_ping_schedule_follows_minute_boundaries():
+    """
+    Решение «пора ли пинговать» — чистая функция от таймера и остатка.
+
+    Раньше отсчёт шёл «60 секунд от прошлого пинга», и сообщения приходили не на
+    круглых минутах, а когда придётся.
+    """
+    now = utcnow()
 
     class Timer:
+        total_seconds = 300
+        ends_at = now + timedelta(seconds=300)
         last_ping = None
-        warned = False
 
     timer = Timer()
-    assert _should_ping(timer, left=300) is True   # первый пинг — сразу
 
-    timer.last_ping = utcnow()
-    assert _should_ping(timer, left=300) is False  # минута ещё не прошла
-    assert _should_ping(timer, left=20) is True    # но до конца 20 секунд — предупреждаем
+    # Пинга на старте нет: отсчёт только начался, границу минуты ещё не прошли.
+    assert _should_ping(timer, left=300) is False
+    assert _should_ping(timer, left=241) is False
+    # Граница пройдена — пинг «осталось 4 минуты».
+    assert _should_ping(timer, left=240) is True
 
-    timer.warned = True
-    assert _should_ping(timer, left=20) is False   # предупредили один раз, хватит
+    # После пинга точкой отсчёта становится он сам.
+    timer.last_ping = now + timedelta(seconds=60)   # пинг случился, когда осталось 240
+    assert _should_ping(timer, left=200) is False   # всё ещё четвёртая минута
+    assert _should_ping(timer, left=180) is True    # третья
 
-    timer.last_ping = utcnow() - timedelta(seconds=61)
-    assert _should_ping(timer, left=300) is True   # минута прошла
+    # Минутный отдых: до самого конца ни одного промежуточного пинга.
+    class Minute:
+        total_seconds = 60
+        ends_at = now + timedelta(seconds=60)
+        last_ping = None
+
+    assert _should_ping(Minute(), left=60) is False
+    assert _should_ping(Minute(), left=30) is False
+    assert _should_ping(Minute(), left=1) is False

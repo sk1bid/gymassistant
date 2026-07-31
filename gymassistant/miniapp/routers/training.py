@@ -4,6 +4,7 @@ import uuid
 from fastapi import APIRouter, HTTPException
 
 from database.orm_extra import (
+    orm_add_skipped_sets,
     orm_delete_set,
     orm_finish_training_session,
     orm_get_active_session,
@@ -17,9 +18,9 @@ from database.orm_query import orm_add_set, orm_get_exercises, orm_get_program
 from miniapp.db import Session
 from miniapp.deps import CurrentUser
 from miniapp.ownership import own_day, own_exercise, own_set, own_training_session
-from miniapp.schemas import FinishTrainingIn, SetEditIn, SetIn, StartTrainingIn
+from miniapp.schemas import FinishTrainingIn, SetEditIn, SetIn, SkipIn, StartTrainingIn
 from miniapp.state import DEFAULT_CIRCULAR_ROUNDS, training_state
-from services.workout import build_plan, current_step, rest_after
+from services.workout import build_plan, current_step, done_counts, rest_after
 
 router = APIRouter(prefix="/api/training", tags=["training"])
 
@@ -128,8 +129,52 @@ async def _schedule_rest(session: Session, user: CurrentUser, training):
         chat_id=user.user_id,  # приватный чат с ботом: chat_id совпадает с user_id
         seconds=seconds,
         next_up=f"{names.get(following.exercise_id, '')} — подход {following.set_number}",
-        quiet=program.quiet_rest_pings,
     )
+
+
+@router.post("/skip")
+async def skip(body: SkipIn, user: CurrentUser, session: Session):
+    """
+    Подход не сделан: не хватило сил, занят снаряд, заболело плечо.
+
+    До этого уйти с упражнения было нельзя вовсе. Шаг тренировки — первое расхождение
+    между планом и записанными подходами, а значит план двигался ТОЛЬКО записанным
+    подходом: не смог третий — либо пиши его, соврав про вес, либо бросай тренировку
+    целиком. Пропуск закрывает дыру, ничего не меняя в самой конструкции: это обычная
+    строка, которая двигает план наравне с выполненной, но в статистику не идёт.
+
+    Отдых ставится обычный. Он положен и после неудачной попытки (человеку надо
+    отдышаться), и при уходе на другое упражнение — длительность в обоих случаях
+    считает rest_after по тому, каким оказался следующий шаг.
+    """
+    training = await own_training_session(session, user.user_id, parse_session_id(body.session_id))
+    exercise = await own_exercise(session, user.user_id, body.exercise_id)
+
+    program = await orm_get_program(session, user.actual_program_id) if user.actual_program_id else None
+    exercises = await orm_get_exercises(session, training.training_day_id)
+    plan = build_plan(exercises, (program.circular_rounds if program else None) or DEFAULT_CIRCULAR_ROUNDS)
+    done = await orm_get_sets_of_session(session, training.id)
+
+    step = current_step(plan, done)
+    if step is None:
+        raise HTTPException(400, "тренировка уже отработана")
+
+    # Пропускать можно только текущий шаг. Дело не в строгости: подходы обязаны
+    # ложиться в порядке плана — на этом стоит и вычисление шага, и определение
+    # только что закрытого шага в _schedule_rest. Пропуск в середине плана сломал бы
+    # и то, и другое.
+    if step.exercise_id != exercise.id:
+        raise HTTPException(400, "это не текущее упражнение")
+
+    count = 1
+    if body.whole_exercise:
+        planned = sum(1 for s in plan if s.exercise_id == exercise.id)
+        count = planned - done_counts(done).get(exercise.id, 0)
+
+    await orm_add_skipped_sets(session, training.id, exercise.id, count)
+    await _schedule_rest(session, user, training)
+
+    return await training_state(session, user, training)
 
 
 @router.patch("/set/{set_id}")
@@ -163,10 +208,12 @@ async def finish(body: FinishTrainingIn, user: CurrentUser, session: Session):
     await orm_finish_training_session(session, training.id)
     await orm_stop_rest_timer(session, user.user_id)
 
-    done = await orm_get_sets_of_session(session, training.id)
+    # Итог — про сделанное, поэтому пропущенные подходы в него не идут. Тренировка,
+    # где всё пропущено, честно показывает нули, а не «10 подходов, 0 кг».
+    lifted = [s for s in await orm_get_sets_of_session(session, training.id) if not s.skipped]
     return {
         "ok": True,
-        "sets": len(done),
-        "exercises": len({s.exercise_id for s in done}),
-        "volume": sum(s.weight * s.repetitions for s in done),
+        "sets": len(lifted),
+        "exercises": len({s.exercise_id for s in lifted}),
+        "volume": sum(s.weight * s.repetitions for s in lifted),
     }
