@@ -58,6 +58,15 @@ function paintProfile(data, activity) {
     ${heatmap(activity)}
 
     <div class="section-title">Разделы</div>
+
+    <!-- Программы стоят первыми: из трёх разделов это единственный, где что-то
+         настраивают, — остальные два только показывают уже накопленное. -->
+    <button class="list-item" data-go="/programs">
+      <span class="grow"><span class="title">Программы</span><br>
+        <span class="sub">${programsSub(data.programs)}</span></span>
+      <span class="chev">›</span>
+    </button>
+
     <button class="list-item" data-go="/records">
       <span class="grow"><span class="title">Рекорды</span><br>
         <span class="sub">Личные максимумы и прогресс</span></span>
@@ -100,6 +109,20 @@ function paintProfile(data, activity) {
   });
 }
 
+/**
+ * Подпись строки «Программы».
+ *
+ * Имя активной программы, а не «N программ»: активная всегда одна, и знать
+ * пользователь хочет именно её. Число программ — вторично и на экране списка видно.
+ */
+function programsSub(programs) {
+  if (!programs) return 'Упражнения по дням недели';
+  if (programs.active) return escape(programs.active);
+  return programs.count
+    ? plural(programs.count, 'программа', 'программы', 'программ') + ' · ни одна не активна'
+    : 'Программы ещё нет';
+}
+
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн',
                 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 
@@ -116,13 +139,31 @@ const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн',
 function heatmap(activity) {
   if (!activity || !activity.days.length) return '';
 
-  const max = activity.max_sets || 1;
+  /*
+    Насыщенность клетки — КВАРТИЛЬ дня среди своих же тренировочных дней, как на
+    GitHub, а не доля от максимума.
+
+    Доля от максимума проигрывает на выбросах: один марафонский день на 60 подходов
+    прижимает обычные 15 к отметке 0.25, и вся карта уходит в самый бледный уровень —
+    хотя эти 15 и есть типичная тренировка. Квартиль сравнивает день не с рекордом,
+    а с распределением: цвет означает «больше половины моих дней», и шкала занята
+    целиком при любом разбросе.
+
+    Пороги считаются только по дням с тренировками: нули — это фон карты, а не
+    нижняя четверть активности, иначе они утянули бы границы вниз.
+  */
+  const counts = activity.days.map((d) => d.sets).filter(Boolean).sort((a, b) => a - b);
+  const at = (p) => counts[Math.min(counts.length - 1, Math.floor(counts.length * p))];
+  const [q1, q2, q3] = [at(0.25), at(0.5), at(0.75)];
+
   const level = (sets) => {
     if (!sets) return 0;
-    const ratio = sets / max;
-    if (ratio <= 0.25) return 1;
-    if (ratio <= 0.5) return 2;
-    if (ratio <= 0.75) return 3;
+    // Разброса нет — все тренировки одинаковы по объёму, и делить их не на что:
+    // ровная средняя заливка честнее, чем сплошной первый квартиль.
+    if (q1 === q3) return 3;
+    if (sets <= q1) return 1;
+    if (sets <= q2) return 2;
+    if (sets <= q3) return 3;
     return 4;
   };
 

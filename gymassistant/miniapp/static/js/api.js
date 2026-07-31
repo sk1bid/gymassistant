@@ -76,6 +76,9 @@ export const api = {
     start:     (trainingDayId) => request('POST', 'api/training/start', { training_day_id: trainingDayId }),
     state:     () => request('GET', 'api/training/state'),
     addSet:    (payload) => request('POST', 'api/training/set', payload),
+    skip:      (sessionId, exerciseId, wholeExercise = false) => request('POST', 'api/training/skip', {
+      session_id: sessionId, exercise_id: exerciseId, whole_exercise: wholeExercise,
+    }),
     editSet:   (id, weight, reps) => request('PATCH', `api/training/set/${id}`, { weight, reps }),
     deleteSet: (id) => request('DELETE', `api/training/set/${id}`),
     finish:    (sessionId) => request('POST', 'api/training/finish', { session_id: sessionId }),

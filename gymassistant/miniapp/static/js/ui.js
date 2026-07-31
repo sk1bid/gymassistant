@@ -233,17 +233,121 @@ export function shortDate(iso) {
   return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 }
 
-/** Нижняя шторка — для форм, которые не заслуживают отдельного экрана. */
+/*
+  Физика доводки шторки — та же, что ведёт свайп разделов (см. swipe.js).
+  Критически затухающая пружина продолжает движение со скоростью пальца и приходит
+  к цели без перелёта; фиксированный CSS-переход стартовал бы с нулевой скорости и
+  на стыке с броском ощущался бы жёстким магнитом. PROJECTION — прогноз точки
+  остановки по инерции (формула Apple, decelerationRate 0.998).
+*/
+const STIFFNESS = 260;
+const DAMPING = 2 * Math.sqrt(STIFFNESS);
+const PROJECTION = 0.998 / (1 - 0.998);
+
+/**
+ * Нижняя шторка — для форм, которые не заслуживают отдельного экрана.
+ *
+ * Закрывается тремя способами: тапом мимо, программно (close) и стягиванием вниз.
+ * У стягивания и отскока — общая пружина, у программного close анимации нет: он
+ * вызывается прямо перед переходом на другой экран, где шторке уже нечего доводить.
+ */
 export function sheet(html) {
   const backdrop = document.createElement('div');
   backdrop.className = 'sheet-backdrop';
   backdrop.innerHTML = `<div class="sheet">${html}</div>`;
   document.body.appendChild(backdrop);
 
-  const close = () => backdrop.remove();
+  const panel = backdrop.querySelector('.sheet');
+
+  // Базовая непрозрачность затемнения берётся из темы (--scrim: .32 светлая /
+  // .6 тёмная), чтобы стягивание гасило именно её, а не захардкоженное значение.
+  const scrim = getComputedStyle(backdrop).backgroundColor.match(/[\d.]+/g) || [];
+  const rgb = scrim.slice(0, 3).join(',') || '0,0,0';
+  const dimBase = scrim.length === 4 ? +scrim[3] : 0.32;
+  const dim = (k) => {
+    backdrop.style.backgroundColor = `rgba(${rgb},${(dimBase * Math.max(0, k)).toFixed(3)})`;
+  };
+
+  let gone = false;
+  const remove = () => { if (!gone) { gone = true; backdrop.remove(); } };
+
+  // Состояние жеста: смещение вниз, скорость (px/мс) и замеры для неё.
+  let dragging = false;
+  let startY = 0, dragY = 0, lastY = 0, lastAt = 0, vel = 0;
+  let raf = 0;
+
+  // Пружина по вертикали в пикселях: к target с начальной скоростью v0 (px/с).
+  const springTo = (from, target, v0, done) => {
+    cancelAnimationFrame(raf);
+    const h = panel.offsetHeight || window.innerHeight;
+    let y = from;
+    let speed = v0;
+    let last = performance.now();
+    const tick = (now) => {
+      const dt = Math.min(0.032, Math.max(0.001, (now - last) / 1000));
+      last = now;
+      speed += (-STIFFNESS * (y - target) - DAMPING * speed) * dt;
+      y += speed * dt;
+      const settled = Math.abs(y - target) < 0.5 && Math.abs(speed) < 5;
+      if (settled) y = target;
+      dragY = Math.max(0, y);
+      panel.style.transform = `translateY(${dragY}px)`;
+      dim(1 - dragY / h);
+      if (settled) { done && done(); return; }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+  };
+
+  const dismiss = (v0 = 0) => {
+    const h = panel.offsetHeight || window.innerHeight;
+    backdrop.style.pointerEvents = 'none';
+    springTo(dragY, h * 1.15, Math.max(v0, 600), remove);
+  };
+
+  panel.addEventListener('touchstart', (e) => {
+    // Тянем шторку только от её верха: ниже палец должен прокручивать содержимое.
+    if (panel.scrollTop > 0 || e.touches.length !== 1) return;
+    dragging = true;
+    cancelAnimationFrame(raf);
+    startY = lastY = e.touches[0].clientY;
+    lastAt = performance.now();
+    vel = 0;
+  }, { passive: true });
+
+  panel.addEventListener('touchmove', (e) => {
+    if (!dragging) return;
+    const y = e.touches[0].clientY;
+    dragY = y - startY;
+    if (dragY < 0) dragY *= 0.2;         // вверх тянуть некуда — сопротивление
+    if (dragY > 0) e.preventDefault();   // иначе жест уйдёт в прокрутку страницы
+
+    panel.style.transform = `translateY(${Math.max(0, dragY)}px)`;
+    const h = panel.offsetHeight || window.innerHeight;
+    dim(1 - Math.max(0, dragY) / h);
+
+    const now = performance.now();
+    if (now > lastAt) {
+      vel = (y - lastY) / (now - lastAt);
+      lastY = y; lastAt = now;
+    }
+  }, { passive: false });
+
+  const release = () => {
+    if (!dragging) return;
+    dragging = false;
+    const h = panel.offsetHeight || window.innerHeight;
+    if (performance.now() - lastAt > 90) vel = 0;   // палец замер — это не бросок
+    const projected = dragY + vel * PROJECTION;      // куда долетело бы по инерции
+    if (projected > h * 0.34) dismiss(vel * 1000);
+    else springTo(dragY, 0, vel * 1000);
+  };
+  panel.addEventListener('touchend', release);
+  panel.addEventListener('touchcancel', release);
+
   backdrop.addEventListener('click', (e) => {
-    if (e.target === backdrop) close();   // тап мимо шторки закрывает её
+    if (e.target === backdrop) dismiss();   // тап мимо шторки — с той же доводкой
   });
 
-  return { node: backdrop, close };
+  return { node: backdrop, close: remove };
 }

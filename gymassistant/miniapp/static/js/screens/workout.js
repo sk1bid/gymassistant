@@ -44,64 +44,50 @@ function draw() {
   return drawEntry();
 }
 
-/** Ввод подхода. */
+/**
+ * Ввод подхода.
+ *
+ * Порядок блоков — контекст сверху, ввод снизу: где мы → что за упражнение →
+ * все его подходы → поля → действия. Таблица подходов стоит НАД степперами
+ * намеренно, по двум причинам. Она уводит кнопки «−/+» из верхней трети экрана
+ * ближе к большому пальцу — их за тренировку жмут десятки раз, а «Записать
+ * подход» ровно один раз на подход. И она держит высоту: строки на все подходы
+ * упражнения нарисованы сразу, поэтому запись подхода не двигает степперы
+ * под пальцем.
+ */
 function drawEntry() {
-  const { current, progress } = state;
+  const { current } = state;
   const exercise = current.exercise;
   const previous = previousSet();
 
-  const startWeight = previous?.weight ?? current.exercise.ai?.next_weight ?? 20;
+  const startWeight = previous?.weight ?? 20;
   const startReps = previous?.reps ?? exercise.reps;
 
   render(`
-    <div class="row">
-      <span class="overline flush">
-        ${current.is_circuit
-          ? `круг ${current.round_number} из ${current.total_rounds}`
-          : `подход ${current.set_number} из ${current.total_sets}`}
-      </span>
-      <span class="overline flush">${escape(state.day?.day_of_week || '')}</span>
-    </div>
+    <div class="overline flush">${position(current)}</div>
 
     <div class="exercise-name">${escape(exercise.name)}</div>
-    <div class="progress"><div style="width:${(progress.done / progress.total) * 100}%"></div></div>
+    ${record(exercise.record, previous)}
 
-    <div class="meta">
-      <span>прошлый раз <b>${previous ? `${weight(previous.weight)} × ${previous.reps}` : '—'}</b></span>
-      <span class="sep">·</span>
-      <span>рекорд <b>${exercise.record ? `${weight(exercise.record)} кг` : '—'}</b></span>
-    </div>
+    ${setTable()}
 
-    <div class="stepper mt-4">
-      <button data-step="weight" data-delta="-2.5">−</button>
-      <div class="value">
-        <input id="weight" type="number" inputmode="decimal" step="2.5" value="${weight(startWeight)}">
-        <div class="unit">кг</div>
-      </div>
-      <button data-step="weight" data-delta="2.5">+</button>
-    </div>
+    ${stepper('weight', 'вес, кг', weight(startWeight), 2.5, 'decimal')}
     <div class="delta" id="weight-delta"></div>
 
-    ${aiLine(exercise.ai, startWeight)}
+    ${stepper('reps', 'повторения', startReps, 1, 'numeric')}
+    <div class="delta" id="reps-delta"></div>
 
-    <div class="stepper compact mt-4">
-      <button data-step="reps" data-delta="-1">−</button>
-      <div class="value">
-        <input id="reps" type="number" inputmode="numeric" step="1" value="${startReps}">
-        <div class="unit">повторений</div>
-      </div>
-      <button data-step="reps" data-delta="1">+</button>
-    </div>
+    <button class="btn outlined mt-3" id="skip">${skipLabel()}</button>
 
-    ${recordedSets()}
-    ${planList()}
+    ${planFold()}
 
-    <button class="btn danger mt-4" id="finish">Закончить тренировку</button>
+    <button class="btn quiet mt-4" id="finish">Закончить тренировку</button>
   `);
 
   bindSteppers();
-  bindRecordedSets();
+  bindSetRows();
 
+  on('#skip', 'click', skip);
   on('#finish', 'click', finish);
 
   mainButton('Записать подход', submitSet);
@@ -109,54 +95,234 @@ function drawEntry() {
 }
 
 /**
- * Совет ИИ — только если он отличается от того, что уже стоит в поле.
- *
- * Раньше блок висел всегда, и в самом частом случае получалось «рекомендую 20 кг»
- * над полем, где и так набрано 20: целая карточка ради подтверждения. Совет имеет
- * смысл ровно тогда, когда он предлагает изменить вес.
+ * Как называется одна единица работы. У круговых это круг, а не подход:
+ * в плане `set_number` кругового упражнения и ЕСТЬ номер круга
+ * (services/workout.py), поэтому строка «Подход 2» врала бы прямо под
+ * заголовком «круг 2 из 3».
  */
-function aiLine(ai, currentWeight) {
-  if (!ai) return '';
-  if (Math.abs(ai.next_weight - currentWeight) < 0.01) return '';
+function words() {
+  return state.current.is_circuit
+    ? { title: 'Круг', one: 'круг', few: 'круга', many: 'кругов' }
+    : { title: 'Подход', one: 'подход', few: 'подхода', many: 'подходов' };
+}
 
-  const plates = ai.plates_each_side?.length
-    ? ` · блины ${ai.plates_each_side.join(' + ')} на сторону`
-    : '';
+/**
+ * Все подходы упражнения одной таблицей: сделанные, текущий и те, что впереди.
+ *
+ * Раньше здесь был список только записанных — до первого подхода пустой, из-за
+ * чего экран начинался с дыры в треть высоты, а каждая запись двигала вёрстку.
+ * И «прошлый раз» жил отдельной строкой наверху, где он по построению повторял
+ * оба степпера: поля предзаполнены ровно этими числами (см. startWeight выше).
+ * В таблице та же справка стоит там, где она не дублируется, — на подходах,
+ * которых ещё не было.
+ */
+function setTable() {
+  const { current } = state;
+  const done = state.sets.filter((s) => s.exercise_id === current.exercise.id);
+  const before = current.exercise.prev;
+  const word = words().title;
+
+  const rows = [];
+  for (let i = 0; i < current.total_sets; i += 1) {
+    const fact = done[i];
+    const name = `<span class="grow">${word} ${i + 1}</span>`;
+
+    // Записанное — кнопка: по ней же подход и правят.
+    if (fact) {
+      rows.push(`
+        <button class="set-row ${fact.skipped ? 'skipped' : 'done'}"
+                data-set="${fact.id}" data-weight="${fact.weight}" data-reps="${fact.reps}">
+          <span class="mark">${fact.skipped ? '—' : '✓'}</span>
+          ${name}
+          <span class="v">${fact.skipped ? 'пропущен' : `${weight(fact.weight)} кг × ${fact.reps}`}</span>
+        </button>
+      `);
+      continue;
+    }
+
+    const now = i + 1 === current.set_number;
+    const was = before[i];
+
+    rows.push(`
+      <div class="set-row${now ? ' now' : ''}">
+        <span class="mark">${now ? '●' : '·'}</span>
+        ${name}
+        ${now
+          ? '<span class="pill on">сейчас</span>'
+          : `<span class="v was">${was ? `было ${weight(was.weight)} × ${was.reps}` : ''}</span>`}
+      </div>
+    `);
+  }
 
   return `
-    <div class="ai-line">
-      <span class="pill ai">ИИ</span>
-      <span>советует <b>${weight(ai.next_weight)} кг</b>${plates}</span>
-      <button id="use-ai">Взять</button>
+    <div class="sets">${rows.join('')}</div>
+    ${done.length ? '<div class="hint mt-2">Нажмите на записанный подход, чтобы исправить</div>' : ''}
+  `;
+}
+
+/* ---------------------------------------------------------- пропуск подхода
+ *
+ * Раньше выхода не было: план двигался только записанным подходом, поэтому не
+ * сделав третий, человек либо записывал его, соврав про вес, либо бросал тренировку.
+ * Вариантов два, потому что причины разные: «этот не смог, следующий попробую»
+ * и «сегодня не идёт вовсе».
+ */
+
+/** Сколько подходов упражнения ещё не закрыто, считая текущий. */
+function remaining() {
+  return state.current.total_sets - state.current.set_number + 1;
+}
+
+/**
+ * Многоточие — это обещание: нажатие потребует ещё одного выбора.
+ *
+ * Кнопка называлась «Пропустить подход», а открывала шторку, первый пункт которой
+ * назывался так же. То есть подпись обещала действие, а давала меню, и самый
+ * частый случай стоил двух тапов. Теперь выбор предлагается только когда он есть:
+ * на последнем подходе упражнения «пропустить этот» и «закончить упражнение» —
+ * одно и то же, и кнопка делает это сразу. Пропуск обратим тапом по строке
+ * подхода («Всё-таки сделал»), поэтому подтверждения не просим.
+ */
+function skipLabel() {
+  return remaining() > 1 ? 'Пропустить подход…' : 'Пропустить подход';
+}
+
+async function skip() {
+  if (remaining() > 1) return skipSheet();
+  await sendSkip(false);
+}
+
+async function sendSkip(whole, form) {
+  try {
+    state = await api.training.skip(state.session_id, state.current.exercise.id, whole);
+  } catch (error) {
+    form?.close();
+    haptic('error');
+    return alert(`Не удалось: ${error.message}`);
+  }
+
+  form?.close();
+  haptic('warning');
+  rest.sync(state.rest);
+  draw();
+}
+
+function skipSheet() {
+  const { one, few, many } = words();
+  const form = sheet(`
+    <h2>Пропустить</h2>
+    <p class="hint">${escape(state.current.exercise.name)} — ${position(state.current)}</p>
+
+    <button class="btn secondary mt-4" id="skip-one">Только этот ${one}</button>
+    <button class="btn secondary mt-2" id="skip-all">
+      Всё упражнение · ${plural(remaining(), one, few, many)}
+    </button>
+
+    <p class="hint mt-3">
+      Пропущенное остаётся в тренировке, но не идёт ни в объём, ни в рекорды.
+    </p>
+  `);
+
+  form.node.querySelector('#skip-one').onclick = () => sendSkip(false, form);
+  form.node.querySelector('#skip-all').onclick = () => sendSkip(true, form);
+}
+
+/**
+ * Где мы сейчас — одной строкой.
+ *
+ * У круговых раньше висело только «круг 1 из 3». Это половина ответа: круг говорит,
+ * сколько раз пройти блок, но не сколько снарядов осталось внутри круга, — а стоя
+ * между тремя станциями хочется знать именно это. Получалось, что в самом путаном
+ * режиме информации меньше, чем в простом, где «подход 2 из 4» отвечает на всё.
+ */
+function position(current) {
+  if (!current.is_circuit) {
+    return `подход ${current.set_number} из ${current.total_sets}`;
+  }
+
+  const round = `круг ${current.round_number} из ${current.total_rounds}`;
+
+  // Круговой блок из одного упражнения — вырожденный случай: «упражнение 1 из 1»
+  // ничего не добавляет.
+  return current.total_exercises > 1
+    ? `${round} · упражнение ${current.exercise_number} из ${current.total_exercises}`
+    : round;
+}
+
+/**
+ * Рекорд — только если до него ещё есть куда тянуться.
+ *
+ * Когда прошлый раз и был рекордом, строка превращалась в третье повторение одного
+ * и того же числа: «прошлый раз 30 × 7 · рекорд 30 кг» над полем, где набрано 30.
+ * Ровно та же причина, по которой отсюда убрали строку с советом веса.
+ */
+function record(value, previous) {
+  if (!value || value <= (previous?.weight ?? 0)) return '';
+  return `<div class="meta">рекорд <b>${weight(value)} кг</b></div>`;
+}
+
+/**
+ * Степпер: «−шаг», число, «+шаг».
+ *
+ * Шаг написан НА кнопках, и это не украшение. Он решает сразу две вещи: на сколько
+ * двигает кнопка, раньше выяснялось только тыком; и два одинаковых по кеглю степпера
+ * стали различимы — «±2.5» и «±1» опознаются мгновенно, а подпись под числом
+ * (11 пикселей, самый мелкий текст экрана) для этого не годилась.
+ *
+ * aria-label на всём: без них скринридер читает четыре кнопки как «минус, плюс,
+ * минус, плюс», не сообщая, какая пара к какому полю относится.
+ *
+ * Подписи называют ПОЛЕ, а не единицу: было «КГ» и «ПОВТОРЕНИЙ» — единица
+ * измерения против существительного в родительном падеже, две разные сущности
+ * в симметричных местах. Теперь «ВЕС, КГ» и «ПОВТОРЕНИЯ».
+ */
+function stepper(field, caption, value, step, mode) {
+  const label = (delta) => `${caption}: ${delta > 0 ? 'плюс' : 'минус'} ${step}`;
+  const face = (delta) => `${delta > 0 ? '+' : '−'}${step}`;
+
+  return `
+    <div class="stepper mt-4">
+      <button class="step" data-step="${field}" data-delta="${-step}"
+              aria-label="${label(-step)}">${face(-step)}</button>
+      <div class="value">
+        <input id="${field}" type="number" inputmode="${mode}" step="${step}"
+               value="${value}" aria-label="${caption}">
+        <div class="unit">${caption}</div>
+      </div>
+      <button class="step" data-step="${field}" data-delta="${step}"
+              aria-label="${label(step)}">${face(step)}</button>
     </div>
   `;
 }
 
-/** Уже записанные подходы — тап правит, долгий тап удаляет. */
-function recordedSets() {
-  const done = state.sets.filter((s) => s.exercise_id === state.current.exercise.id);
-  if (!done.length) return '';
-
-  return `
-    <div class="section-title">Записано</div>
-    ${done.map((s, i) => `
-      <div class="set-chip" data-set="${s.id}" data-weight="${s.weight}" data-reps="${s.reps}">
-        <span class="n">Подход ${i + 1}</span>
-        <span class="v">${weight(s.weight)} кг × ${s.reps}</span>
-      </div>
-    `).join('')}
-    <div class="hint mt-2">Нажмите на подход, чтобы исправить</div>
-  `;
-}
-
-function planList() {
+/**
+ * План всей тренировки — свёрнутый ряд-раскрывашка.
+ *
+ * Здесь же теперь живёт счёт по тренировке. Раньше «осталось 12 подходов» стояло
+ * наверху, в двух сантиметрах от «подход 1 из 3»: два счётчика одним словом, но
+ * один про упражнение, другой про весь день, — читалось как противоречие. Теперь
+ * уровни разведены: шапка экрана говорит только про текущее упражнение, про
+ * тренировку целиком — эта строка и список под ней.
+ *
+ * Полосы прогресса не осталось вовсе. Ростом в три пикселя и залитая на ноль
+ * в начале тренировки, она была неотличима от разделителя, а сам список с
+ * галочками показывает то же самое честнее.
+ */
+function planFold() {
   const doneCount = state.progress.done;
-
   const left = state.progress.total - doneCount;
 
   return `
     <details class="fold">
-      <summary>План · осталось ${left}</summary>
+      <summary>
+        <span class="grow">План тренировки</span>
+        <span class="sub">${left
+          ? `ещё ${plural(left, 'подход', 'подхода', 'подходов')}`
+          : 'всё сделано'}</span>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </summary>
     ${state.plan.map((step, i) => {
       const status = i < doneCount ? 'done' : (i === doneCount ? 'now' : '');
       const mark = i < doneCount ? '✓' : (step.is_circuit ? '↻' : '·');
@@ -286,12 +452,6 @@ function bindSteppers() {
 
   on('#weight', 'input', redrawDeltas);
   on('#reps', 'input', redrawDeltas);
-
-  on('#use-ai', 'click', () => {
-    document.getElementById('weight').value = weight(state.current.exercise.ai.next_weight);
-    haptic('medium');
-    redrawDeltas();
-  });
 }
 
 /**
@@ -299,18 +459,33 @@ function bindSteppers() {
  *
  * Показывается только при расхождении. Раньше при равенстве под обоими степперами
  * писалось «как в прошлый раз» — две строки текста ровно про то, что ничего
- * не изменилось. Повторения не комментируются вовсе: их и так видно в плане.
+ * не изменилось.
+ *
+ * Слот есть у обоих полей, даже когда пуст. Раньше он был только под весом, и
+ * отступ над «ПОВТОРЕНИЯ» выходил вдвое больше, чем над «ВЕС»: кегли степперам
+ * уравняли как паре, а вертикальный ритм эту работу отменял — на экране они
+ * читались двумя независимыми блоками.
  */
 function redrawDeltas() {
   const previous = previousSet();
-  const node = document.getElementById('weight-delta');
-  if (!node || !previous) return;
+  if (!previous) return;
 
-  const diff = (parseFloat(document.getElementById('weight').value) || 0) - previous.weight;
+  delta('weight-delta', (parseFloat(document.getElementById('weight').value) || 0) - previous.weight,
+    (n) => `${weight(n)} кг`);
+
+  delta('reps-delta', (parseInt(document.getElementById('reps').value, 10) || 0) - previous.reps,
+    (n) => plural(n, 'повторение', 'повторения', 'повторений'));
+}
+
+function delta(id, diff, format) {
+  const node = document.getElementById(id);
+  if (!node) return;
+
   const rounded = Math.round(diff * 10) / 10;
-
   node.className = `delta ${rounded > 0 ? 'up' : rounded < 0 ? 'down' : ''}`;
-  node.textContent = rounded === 0 ? '' : `${rounded > 0 ? '+' : ''}${rounded} кг к прошлому разу`;
+  node.textContent = rounded === 0
+    ? ''
+    : `${rounded > 0 ? '+' : '−'}${format(Math.abs(rounded))} к прошлому разу`;
 }
 
 async function submitSet() {
@@ -341,14 +516,23 @@ async function submitSet() {
   }
 }
 
-function bindRecordedSets() {
-  onAction('.set-chip', async (node) => {
+function bindSetRows() {
+  // Только записанные: у строк, которых ещё не было, править нечего.
+  onAction('.set-row.done, .set-row.skipped', async (node) => {
     const id = Number(node.dataset.set);
-    const currentWeight = Number(node.dataset.weight);
-    const currentReps = Number(node.dataset.reps);
+    const wasSkipped = node.classList.contains('skipped');
+
+    // У пропущенного в базе нули — подставлять их в форму бессмысленно.
+    // Берём то же, с чего начинается обычный ввод: прошлый раз или план.
+    const previous = previousSet();
+    const currentWeight = wasSkipped ? (previous?.weight ?? 20) : Number(node.dataset.weight);
+    const currentReps = wasSkipped
+      ? (previous?.reps ?? state.current?.exercise?.reps ?? 10)
+      : Number(node.dataset.reps);
 
     const form = sheet(`
-      <h2>Исправить подход</h2>
+      <h2>${wasSkipped ? 'Всё-таки сделал' : 'Исправить подход'}</h2>
+      ${wasSkipped ? '<p class="hint">Подход перестанет считаться пропущенным.</p>' : ''}
       <div class="field">
         <label>Вес, кг</label>
         <input type="number" id="edit-weight" inputmode="decimal" step="2.5" value="${weight(currentWeight)}">

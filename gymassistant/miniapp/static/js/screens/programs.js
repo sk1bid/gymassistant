@@ -155,18 +155,6 @@ function openSettings(program, reload) {
     ${seconds('circular_rest_between_rounds', 'Отдых между кругами',
               settings.circular_rest_between_rounds)}
 
-    <div class="section-title">Уведомления</div>
-    <div class="switch-card">
-      <label class="switch">
-        <span class="grow">
-          <span class="lead">Тихие напоминания</span><br>
-          <span class="hint">Минутные пинги без звука, звонко — за 30 секунд до конца и в конце</span>
-        </span>
-        <input type="checkbox" id="quiet_rest_pings" ${settings.quiet_rest_pings ? 'checked' : ''}>
-        <span class="track"></span>
-      </label>
-    </div>
-
     <button class="btn mt-4" id="save">Сохранить</button>
   `);
 
@@ -179,7 +167,6 @@ function openSettings(program, reload) {
       circular_rounds: value('circular_rounds'),
       circular_rest_between_exercise: value('circular_rest_between_exercise'),
       circular_rest_between_rounds: value('circular_rest_between_rounds'),
-      quiet_rest_pings: form.node.querySelector('#quiet_rest_pings').checked,
     });
 
     form.close();

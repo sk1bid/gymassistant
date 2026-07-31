@@ -11,7 +11,28 @@
 import { api, cached } from './../api.js';
 import { go } from './../router.js';
 import * as rest from './../rest.js';
-import { escape, on, onAll, plural, render, same } from './../ui.js';
+import { alert } from './../tg.js';
+import { escape, on, onAll, plural, render, same, sheet } from './../ui.js';
+
+/**
+ * Иконки — инлайновый SVG в стиле навигации (24×24, stroke 1.8, currentColor),
+ * а не эмодзи и не глифы вроде «↻»: эмодзи рисуются шрифтом системы и разнятся по
+ * платформам, а «↻» читалось как «обновить» и было залито акцентом без причины.
+ */
+function icon(paths, size = 20, sw = 1.8) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="${sw}" stroke-linecap="round"
+    stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+}
+const ICON = {
+  dumbbell: icon('<path d="M6.5 8v8M4 10.5v3M17.5 8v8M20 10.5v3M6.5 12h11"/>'),
+  repeat:   icon('<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/>', 16),
+  clock:    icon('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', 18),
+  calendar: icon('<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/>', 18),
+  flame:    icon('<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>', 15),
+  check:    icon('<path d="M5 12.5l4.5 4.5L19 7"/>', 22, 2.4),
+  play:     '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
+};
 
 export async function homeScreen() {
   // Если экран уже открывали в этот заход, рисуем его немедленно из последнего
@@ -31,7 +52,50 @@ function paint(data) {
   render(todayBlock(data));
 
   on('#start', 'click', () => go(startPath(data)));
+  on('#other-day', 'click', pickDay);
+  on('#do-missed', 'click', () => go(`/workout/${data.missed.id}`));
   onAll('[data-go]', 'click', (node) => go(node.dataset.go));
+}
+
+/**
+ * Выбор дня для внеплановой тренировки.
+ *
+ * Сервер это умел с самого начала — /training/start принимает любой день программы, —
+ * но попасть туда можно было только через расписание, открыв нужный день и найдя
+ * внизу кнопку. В день отдыха главный экран и вовсе оказывался тупиком: «упражнений
+ * не запланировано» и всё.
+ *
+ * Дни берутся из того же ответа, что рисует расписание: он почти всегда уже в кэше,
+ * поэтому шторка открывается мгновенно.
+ */
+async function pickDay() {
+  const { days } = cached('api/schedule') || await api.schedule();
+  const trainable = (days || []).filter((day) => day.exercises.length);
+
+  if (!trainable.length) {
+    return alert('В программе нет дней с упражнениями.');
+  }
+
+  const form = sheet(`
+    <h2>Какой день тренируем?</h2>
+    <p class="hint">Тренировка запишется сегодняшним числом — расписание не сдвинется.</p>
+    ${trainable.map((day) => `
+      <button class="list-item" data-pick="${day.id}">
+        <span class="grow">
+          <span class="title">${escape(day.day_of_week)}</span><br>
+          <span class="sub">${escape(day.exercises.map((e) => e.name).join(', '))}</span>
+        </span>
+        <span class="chev">›</span>
+      </button>
+    `).join('')}
+  `);
+
+  form.node.querySelectorAll('[data-pick]').forEach((button) => {
+    button.onclick = () => {
+      form.close();
+      go(`/workout/${button.dataset.pick}`);
+    };
+  });
 }
 
 function startPath(data) {
@@ -56,12 +120,21 @@ function todayBlock(data) {
       <div class="overline flush">сегодня</div>
       <h1>${escape(data.today_name)}</h1>
       <p class="subtitle">Упражнений не запланировано — день отдыха.</p>
-      <button class="btn secondary" data-go="/schedule">Открыть расписание</button>
+
+      ${missedRow(data.missed)}
+
+      <!-- В день отдыха это главная кнопка экрана: раньше здесь был тупик —
+           «не запланировано» и ссылка на расписание. -->
+      <button class="btn mt-3" id="other-day">Тренироваться по другому дню</button>
+      <button class="btn secondary mt-2" data-go="/schedule">Открыть расписание</button>
+
+      ${weeklyCard(data.week)}
     `;
   }
 
   const exercises = today.exercises;
   const sets = exercises.reduce((sum, e) => sum + e.sets, 0);
+  const active = data.active_session;
 
   return `
     <div class="overline flush">сегодня</div>
@@ -71,26 +144,139 @@ function todayBlock(data) {
       ${plural(sets, 'подход', 'подхода', 'подходов')}
     </p>
 
-    ${data.active_session ? resumeCard() : nextCard(exercises[0])}
-
-    ${restList(data.active_session ? exercises : exercises.slice(1))}
+    ${active ? resumeCard() : ''}
+    ${sessionCard(exercises, active)}
 
     <button class="btn mt-4" id="start">
-      ${data.active_session ? 'Продолжить тренировку' : 'Начать тренировку'}
+      ${ICON.play}
+      ${active ? 'Продолжить тренировку' : 'Начать тренировку'}
     </button>
+
+    ${active ? '' : `
+      ${missedRow(data.missed)}
+      <button class="btn outlined mt-3" id="other-day">
+        ${ICON.calendar}
+        Тренировать другой день
+      </button>
+    `}
+
+    ${weeklyCard(data.week)}
   `;
 }
 
-/** Ближайшее упражнение — единственное, что выделено цветом на экране. */
-function nextCard(exercise) {
+/**
+ * Недельная цель и серия — мотивационная сводка внизу главной.
+ *
+ * Кольцо показывает прогресс к цели недели (число тренировочных дней в программе);
+ * серия — тихой строкой с огоньком и только начиная с двух недель: «серия: 1 неделя»
+ * бессмысленна, а отсутствие серии не повод укорять. Когда цель закрыта, кольцо
+ * заполнено с галочкой, а серия уходит в акцент — это момент награды.
+ */
+function weeklyCard(week) {
+  if (!week || !week.goal) return '';
+
+  const met = week.done >= week.goal;
+  const left = Math.max(0, week.goal - week.done);
+
+  const R = 23;
+  const C = 2 * Math.PI * R;
+  const done = Math.min(week.done, week.goal);
+  const offset = met ? 0 : C * (1 - done / week.goal);
+
+  const streak = week.streak >= 2
+    ? `<div class="streak${met ? ' on' : ''}">${ICON.flame}
+         Серия: ${plural(week.streak, 'неделя', 'недели', 'недель')}</div>`
+    : (met ? '' : '<div class="hint mt-1">до цели недели</div>');
+
   return `
-    <div class="card accent">
-      <div class="overline flush">следующее</div>
-      <div class="lead mt-1">${escape(exercise.name)}</div>
-      <div class="hint">
-        ${plural(exercise.sets, 'подход', 'подхода', 'подходов')} по ${exercise.reps}
+    <div class="week-card mt-4">
+      <div class="week-ring">
+        <svg viewBox="0 0 54 54">
+          <circle class="bg" cx="27" cy="27" r="${R}"/>
+          <circle class="fg" cx="27" cy="27" r="${R}"
+                  stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}"/>
+        </svg>
+        <span class="label">${met ? ICON.check : `${done}/${week.goal}`}</span>
+      </div>
+      <div class="grow">
+        <div class="overline flush">эта неделя</div>
+        <div class="lead">${met ? 'Цель недели закрыта' : `Ещё ${plural(left, 'тренировка', 'тренировки', 'тренировок')}`}</div>
+        ${streak}
       </div>
     </div>
+  `;
+}
+
+/**
+ * Упражнения дня одним блоком.
+ *
+ * Раньше ближайшее упражнение жило в отдельной акцентной карточке, оторванной от
+ * списка остальных, — и выглядело объектом другого сорта, а не первым из четырёх.
+ * Теперь это первая, выделенная строка той же карточки: видно, что это все
+ * упражнения сегодня, просто первое — ближайшее. В идущей тренировке «следующего»
+ * нет (его называет resumeCard), поэтому там просто список.
+ */
+function sessionCard(exercises, active) {
+  const [first, ...rest] = exercises;
+  const rows = (active ? exercises.map(exRow) : rest.map(exRow)).join('');
+
+  return `
+    <div class="session">
+      ${active ? '' : nextRow(first)}
+      ${rows}
+    </div>
+  `;
+}
+
+function nextRow(e) {
+  return `
+    <div class="ex-line next">
+      <span class="chip">${ICON.dumbbell}</span>
+      <span class="grow">
+        <span class="overline tiny">следующее</span>
+        <span class="lead">${escape(e.name)}</span>
+      </span>
+      <span class="num sets">${sets(e)}</span>
+    </div>
+  `;
+}
+
+function exRow(e) {
+  return `
+    <div class="ex-line">
+      <span class="mark">${e.circle ? ICON.repeat : ''}</span>
+      <span class="grow name">${escape(e.name)}</span>
+      <span class="num sets">${sets(e)}</span>
+    </div>
+  `;
+}
+
+/** Один формат подходов на весь экран: «3 × 10» с тонкими шпациями. */
+function sets(e) {
+  return `${e.sets} × ${e.reps}`;
+}
+
+/**
+ * Пропущенный день — тихой строкой, а не карточкой с собственной кнопкой.
+ *
+ * Показывается без укора: программа задана днями недели, «пропустил» значит лишь,
+ * что день прошёл без тренировки. Отработать можно сегодня — запись ляжет
+ * сегодняшним числом, расписание не поедет. Раньше это был второй полноширинный
+ * CTA прямо под «Начать тренировку» — две призывные кнопки стопкой спорили за нажатие.
+ */
+function missedRow(missed) {
+  if (!missed) return '';
+
+  const when = missed.days_ago === 1
+    ? 'вчера'
+    : `${plural(missed.days_ago, 'день', 'дня', 'дней')} назад`;
+
+  return `
+    <button class="missed-row mt-4" id="do-missed">
+      <span class="ic">${ICON.clock}</span>
+      <span class="grow">Пропущено: <b>${escape(missed.day_of_week)}</b> · ${when}</span>
+      <span class="do">Отработать →</span>
+    </button>
   `;
 }
 
@@ -99,22 +285,6 @@ function resumeCard() {
     <div class="card accent">
       <div class="overline flush">тренировка идёт</div>
       <div class="hint mt-1">Продолжится с того подхода, на котором остановились.</div>
-    </div>
-  `;
-}
-
-function restList(exercises) {
-  if (!exercises.length) return '';
-
-  return `
-    <div class="rows">
-      ${exercises.map((e) => `
-        <div class="plan-item">
-          <span class="mark">${e.circle ? '↻' : '·'}</span>
-          <span class="grow">${escape(e.name)}</span>
-          <span class="num">${e.sets}×${e.reps}</span>
-        </div>
-      `).join('')}
     </div>
   `;
 }

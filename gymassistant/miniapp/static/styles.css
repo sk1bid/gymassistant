@@ -25,9 +25,6 @@
   --secondary-container:   #D2E8D5;
   --on-secondary-container: #0D1F13;
 
-  /* Третичный — для того, что не является действием: бейдж ИИ. */
-  --tertiary-container:    #C1E8FB;
-  --on-tertiary-container: #001F2A;
 
   --error:                 #BA1A1A;
   --on-error:              #FFFFFF;
@@ -104,8 +101,6 @@
     --secondary-container:   #384B3C;
     --on-secondary-container: #D2E8D5;
 
-    --tertiary-container:    #244C5B;
-    --on-tertiary-container: #C1E8FB;
 
     --error:                 #FFB4AB;
     --on-error:              #690005;
@@ -144,8 +139,6 @@
   --secondary-container:   #384B3C;
   --on-secondary-container: #D2E8D5;
 
-  --tertiary-container:    #244C5B;
-  --on-tertiary-container: #C1E8FB;
 
   --error:                 #FFB4AB;
   --on-error:              #690005;
@@ -309,6 +302,100 @@ h2 { font-size: 20px; font-weight: 600; line-height: 1.25; margin: 0 0 var(--sp-
 .rows > * { border-bottom: 1px solid var(--outline-variant); }
 .rows > *:last-child { border-bottom: 0; }
 
+/*
+  Карточка дня на главной: ближайшее упражнение и остальные — один блок.
+
+  Раньше «следующее» жило в отдельной акцентной карточке, а список остальных — под
+  ней; связь «это всё упражнения сегодня» терялась, а вторая зелёная поверхность
+  спорила с зелёной кнопкой. Теперь заливка одна, а выделено ровно одно —
+  первая строка.
+*/
+.session {
+  background: var(--surface-container-low);
+  border-radius: var(--shape-lg);
+  padding: 0 var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+.ex-line {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--outline-variant);
+}
+.ex-line:last-child { border-bottom: 0; }
+.ex-line .name { font-size: 15px; }
+
+/* Значок круговой — приглушённый маркер, а не акцент; колонка держит отступ, даже
+   когда упражнение не круговое, чтобы имена стояли ровно. */
+.ex-line .mark {
+  flex: 0 0 16px; display: flex; align-items: center; justify-content: center;
+  color: var(--outline);
+}
+.ex-line .num.sets {
+  font-size: 15px; color: var(--on-surface-variant); font-weight: 400;
+}
+
+/* Первая строка — ближайшее упражнение: единственное выделение в карточке. */
+.ex-line.next .chip {
+  flex: 0 0 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--primary-container); color: var(--on-primary-container);
+}
+.ex-line.next .lead { display: block; }
+.ex-line.next .num.sets { color: var(--on-surface); font-weight: 600; }
+.overline.tiny { display: block; font-size: 10px; margin: 0; }
+
+/*
+  Пропущенный день — тихая строка с текстовым действием, а не карточка с кнопкой.
+  Второстепенный сценарий не должен весить как главный CTA.
+*/
+.missed-row {
+  display: flex; align-items: center; gap: var(--sp-3);
+  width: 100%; text-align: left; background: transparent;
+  padding: var(--sp-2) var(--sp-1);
+  color: var(--on-surface-variant); font-size: 14px;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.missed-row:active { opacity: .6; }
+.missed-row .ic { flex: 0 0 18px; display: flex; color: var(--outline); }
+.missed-row .grow { flex: 1; min-width: 0; }
+.missed-row b { font-weight: 500; color: var(--on-surface); }
+.missed-row .do { color: var(--primary); font-weight: 500; white-space: nowrap; }
+
+/*
+  Недельная цель и серия — мотивационная сводка внизу главной. Кольцо перекликается
+  с кольцом таймера отдыха, чтобы язык приложения оставался однородным.
+*/
+.week-card {
+  display: flex; align-items: center; gap: var(--sp-4);
+  background: var(--surface-container-low);
+  border-radius: var(--shape-lg);
+  padding: var(--sp-4);
+}
+.week-ring { position: relative; flex: 0 0 54px; width: 54px; height: 54px; }
+.week-ring svg { transform: rotate(-90deg); display: block; }
+.week-ring circle { fill: none; stroke-width: 6; }
+.week-ring .bg { stroke: var(--outline-variant); }
+.week-ring .fg {
+  stroke: var(--primary); stroke-linecap: round;
+  transition: stroke-dashoffset .4s var(--ease);
+}
+.week-ring .label {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 600; color: var(--on-surface);
+  font-variant-numeric: tabular-nums;
+}
+.week-ring .label svg { color: var(--primary); }
+
+/* Серия недель — тихой строкой; при закрытой цели уходит в акцент (награда). */
+.streak {
+  display: flex; align-items: center; gap: 5px;
+  margin-top: 5px; font-size: 13px; color: var(--on-surface-variant);
+}
+.streak svg { color: var(--outline); flex: 0 0 auto; }
+.streak.on, .streak.on svg { color: var(--primary); }
+.streak.on { font-weight: 500; }
+
 .center-screen {
   display: flex; align-items: center; justify-content: center;
   min-height: 60vh;
@@ -328,6 +415,7 @@ h2 { font-size: 20px; font-weight: 600; line-height: 1.25; margin: 0 0 var(--sp-
 .mt-2 { margin-top: var(--sp-2); }
 .mt-3 { margin-top: var(--sp-3); }
 .mt-4 { margin-top: var(--sp-4); }
+.mt-5 { margin-top: var(--sp-5); }
 
 .spinner {
   width: 28px; height: 28px; border-radius: 50%;
@@ -357,9 +445,19 @@ button { font: inherit; border: 0; cursor: pointer; color: inherit; }
   background: var(--secondary-container); color: var(--on-secondary-container);
 }
 
-/* Контурная: тише тональной, но всё ещё кнопка. */
+/*
+  Контурная: тише тональной, но всё ещё кнопка.
+
+  Подпись НЕЙТРАЛЬНАЯ, а не primary, хотя M3 по умолчанию красит её в акцент.
+  Причина местная: главное действие в этом приложении почти всегда живёт
+  в MainButton Telegram, то есть в залитой зелёной кнопке внизу экрана, — и
+  контурная кнопка с зелёной подписью вставала рядом вторым призывом того же
+  цвета. На экране подхода это было особенно неверно: «Пропустить подход»
+  жмут раз в тридцать подходов, а весило оно как «Записать подход».
+  Насыщенный primary остаётся ровно на одной кнопке экрана.
+*/
 .btn.outlined {
-  background: transparent; color: var(--primary);
+  background: transparent; color: var(--on-surface);
   border: 1px solid var(--outline);
 }
 
@@ -367,6 +465,23 @@ button { font: inherit; border: 0; cursor: pointer; color: inherit; }
 .btn.ghost { background: transparent; color: var(--primary); }
 
 .btn.danger { background: transparent; color: var(--error); }
+
+/*
+  Приглушённая кнопка — для «Закончить тренировку».
+
+  Раньше она была .danger, то есть полноширинной красной целью прямо под степперами.
+  Красный означает «опасно», а закончить тренировку — нормальный успешный финал;
+  к тому же за тренировку эту кнопку жмут один раз против тридцати нажатий «Записать
+  подход», и весом на экране они были почти равны. Теперь это самый тихий элемент
+  экрана и стоит он последним. От случайного нажатия защищает подтверждение.
+
+  Ширина по содержимому, а не во всю строку: выглядела она текстом по центру,
+  а кликалась целиком, вместе с пустотой по краям, — цель вчетверо больше видимой.
+*/
+.btn.quiet {
+  width: fit-content; margin-left: auto; margin-right: auto;
+  background: transparent; color: var(--on-surface-variant); font-weight: 400;
+}
 
 .btn.small { padding: 10px var(--sp-4); font-size: 14px; width: auto; }
 
@@ -426,13 +541,25 @@ button { font: inherit; border: 0; cursor: pointer; color: inherit; }
   background: var(--surface-container-high); color: var(--on-surface-variant);
 }
 .pill.on { background: var(--primary-container); color: var(--on-primary-container); }
-.pill.ai { background: var(--tertiary-container); color: var(--on-tertiary-container); }
 .title + .pill, .title .pill { margin-left: var(--sp-1); }
 
 /* ---------------------------------------------------------------- ввод */
 
+/*
+  Степпер: «−», число, «+».
+
+  Вес и повторения набраны ОДНИМ размером — это пара, а не иерархия. Раньше вес шёл
+  на 40px, а повторения через модификатор .compact на 28px, по мысли «вес решают,
+  повторения подтверждают». На экране это читалось как ошибка вёрстки: оба числа
+  вводятся, оба уходят одной кнопкой, и разный кегль сообщал несуществующую
+  подчинённость. Плюс 40 и 28 — не соседние ступени шкалы, между ними полторы.
+
+  Размер — тот же display-уровень, что у .display (40/600): своего кегля степпер
+  не заводит.
+*/
 .stepper { display: flex; align-items: center; gap: var(--sp-3); }
 .stepper button {
+  /* 52 ≥ 48: минимальная цель касания. Ниже опускаться нельзя даже ради компактности. */
   flex: 0 0 52px; height: 52px; border-radius: var(--shape-md);
   background: var(--surface-container-high); color: var(--on-surface-variant);
   font-size: 24px; font-weight: 500;
@@ -440,7 +567,17 @@ button { font: inherit; border: 0; cursor: pointer; color: inherit; }
 }
 .stepper button:active { transform: scale(.92); }
 
-.stepper .value { flex: 1; min-width: 0; }
+/*
+  Подпись НАД числом, а не под ним.
+
+  Читают сверху вниз, поэтому «КГ» перед «30» отвечает на вопрос до того, как он
+  возник. Снизу подпись догоняла уже прочитанное число, и два одинаковых по размеру
+  степпера различались только ею — самым мелким текстом на экране.
+*/
+.stepper .value {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column-reverse;
+}
 
 /*
   Селектор нарочно из двух классов. У `.stepper input` та же специфичность, что у
@@ -448,25 +585,50 @@ button { font: inherit; border: 0; cursor: pointer; color: inherit; }
   потому, что идёт позже: поле получало рамку и подложку, «−» и «+» разъезжались
   по краям, а число оказывалось в коробке посреди экрана.
 */
+/*
+  Линия под числом — единственный признак того, что его можно ввести с клавиатуры,
+  а не только доклацать кнопками. Без неё «40» выглядело подписью: ни рамки,
+  ни подложки, ни курсора, — и путь от 40 к 60 занимал восемь нажатий «+2.5».
+  Это активная линия filled-поля M3: волосяная в покое, в акценте и вдвое толще
+  под фокусом (padding компенсирует толщину, чтобы число не дёргалось).
+*/
 .stepper .value input {
-  width: 100%; text-align: center; border: 0; background: transparent;
-  padding: 0; border-radius: 0;
+  width: 100%; text-align: center; background: transparent;
+  border: 0; border-bottom: 1px solid var(--outline-variant);
+  padding: 0 0 3px; border-radius: 0;
   color: var(--on-surface); font-size: 40px; font-weight: 600;
   letter-spacing: -.025em; font-variant-numeric: tabular-nums;
   -moz-appearance: textfield;
 }
-.stepper .value input:focus { outline: 0; border: 0; }
+.stepper .value input:focus {
+  outline: 0; border: 0;
+  border-bottom: 2px solid var(--primary); padding-bottom: 2px;
+}
 .stepper .value input::-webkit-outer-spin-button,
 .stepper .value input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 .stepper .unit {
   text-align: center; font-size: 11px; font-weight: 600;
   text-transform: uppercase; letter-spacing: .08em;
-  color: var(--outline); margin-top: 3px;
+  color: var(--outline); margin-bottom: 2px;
 }
 
+/*
+  Кнопка с шагом на лице: «−2.5», «+1». Кегль ниже, чем у голого глифа, — иначе
+  число распирает кнопку и начинает спорить с главным числом посередине.
+*/
+.stepper button.step { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+
+/*
+  Уменьшённый вариант — только для форм настройки (сколько подходов и повторений
+  ставить упражнению в программе). Там число это параметр, а не то, ради чего
+  открыли экран, и тише основного оно по делу.
+
+  На экране подхода .compact не применяется: см. комментарий выше.
+  Кнопки — 48, а не 46: 46 было ниже минимальной цели касания.
+*/
 .stepper.compact .value input { font-size: 28px; }
-.stepper.compact button { flex: 0 0 46px; height: 46px; }
+.stepper.compact button { flex: 0 0 48px; height: 48px; }
 
 .delta {
   text-align: center; font-size: 13px; font-weight: 500;
@@ -538,59 +700,105 @@ label {
 }
 
 /*
-  Дорожка нарочно бледная. На --outline-variant пустая шкала в начале тренировки
-  читалась сплошной серой плашкой во всю ширину — самым тёмным пятном экрана,
-  хотя означала «сделано ноль».
-*/
-.progress {
-  height: 3px; border-radius: var(--shape-full);
-  background: var(--surface-container-high); overflow: hidden; margin-top: var(--sp-3);
-}
-.progress > div {
-  height: 100%; border-radius: var(--shape-full);
-  background: var(--primary); transition: width .3s var(--ease);
-}
+  Справка под названием упражнения — одной строкой, а не плиткой. Рекорд нужен
+  краем глаза; плитка давала ему вес полноценного блока и съедала экран, на
+  котором должны быть видны только два числа и кнопка.
 
-/*
-  Справка перед подходом — одной строкой, а не двумя плитками. «Прошлый раз» и
-  «рекорд» нужны краем глаза; плитки давали им вес полноценного блока и съедали
-  экран, на котором должны быть видны только два числа и кнопка.
+  «Прошлый раз» отсюда ушёл в таблицу подходов: степперы предзаполнены ровно
+  прошлым разом, поэтому наверху эта строка по построению повторяла оба числа,
+  набранные вчетверо крупнее в двадцати пикселях под ней.
 */
 .meta {
-  display: flex; align-items: baseline; gap: var(--sp-2);
   margin-top: var(--sp-2); font-size: 13px; color: var(--on-surface-variant);
 }
 .meta b {
   font-weight: 500; color: var(--on-surface); font-variant-numeric: tabular-nums;
 }
-.meta .sep { color: var(--outline-variant); }
 
-/* Совет ИИ — строка, а не карточка, и только когда он не равен уже введённому. */
-.ai-line {
-  display: flex; align-items: center; gap: var(--sp-2);
-  margin-top: var(--sp-3); font-size: 14px; color: var(--on-surface-variant);
+/*
+  Подходы упражнения: сделанные, текущий и те, что впереди, — одним списком.
+
+  Строки нарисованы на все запланированные подходы сразу, а не только на
+  записанные. Так экран не начинается с пустоты в треть высоты, запись подхода
+  не двигает вёрстку под пальцем, и «подход 1 из 3» видно глазами, а не только
+  прочитав надпись.
+
+  Разметка та же, что у .plan-item ниже: колонка отметки, название, значение.
+  Два списка на одном экране обязаны выглядеть роднёй.
+*/
+.sets { margin-top: var(--sp-4); }
+.set-row {
+  display: flex; align-items: center; gap: var(--sp-3);
+  width: 100%; text-align: left; background: transparent;
+  padding: var(--sp-3) var(--sp-1); font-size: 14px;
+  color: var(--on-surface-variant);
+  border-bottom: 1px solid var(--outline-variant);
+  transition: background var(--dur-fast) var(--ease);
 }
-.ai-line b { font-weight: 500; color: var(--on-surface); }
-.ai-line button {
-  margin-left: auto; background: transparent; color: var(--primary);
-  font-size: 14px; font-weight: 500; padding: var(--sp-1) var(--sp-2);
-}
+.set-row:last-child { border-bottom: 0; }
+.set-row .mark { flex: 0 0 18px; text-align: center; color: var(--outline); }
+.set-row .grow { flex: 1; min-width: 0; }
+.set-row .v { font-variant-numeric: tabular-nums; }
+button.set-row:active { background: var(--surface-container); }
+
+/* Записанное — единственное на строке, что набрано основным цветом. */
+.set-row.done .v { color: var(--on-surface); font-weight: 500; }
+
+/*
+  Пропущенный подход виден, но приглушён: место в тренировке он занимает,
+  результата за ним нет. Зачёркивать нечего — там и не было числа.
+*/
+.set-row.skipped .v { color: var(--outline); font-style: italic; }
+
+/*
+  Текущий подход помечен пилюлей в primary-container — тем же тональным приёмом,
+  каким выделено ближайшее упражнение на главной. Значения справа у него нет
+  намеренно: оно прямо сейчас набирается в степпере ниже.
+*/
+.set-row.now { color: var(--on-surface); font-weight: 500; }
+.set-row .was { color: var(--outline); }
 
 /*
   План во время подхода свёрнут. Он нужен раз за тренировку — прикинуть, сколько
   осталось, — а висел под каждым подходом и вытеснял вниз всё остальное.
 */
 .fold { margin-top: var(--sp-5); }
+
+/*
+  Раскрывашка — РЯД-КОНТРОЛ, а не подпись к разделу.
+
+  Была набрана ровно как .section-title: 11 пикселей, капитель, цвет outline.
+  Это стиль подписи, поэтому «ПЛАН» и читался подписью — единственным признаком
+  нажимаемости оставалась стрелка того же кегля, а ничего похожего на цель
+  касания на строке не было вовсе. Попытка прижать стрелку к слову проблему
+  не решала: подпись со стрелкой — всё ещё подпись.
+
+  Теперь строка говорит о себе тремя вещами сразу, как принято в любом списке
+  настроек: рост в 48 пикселей (минимальная цель касания), текст 15/500 основным
+  цветом с пояснением справа, шеврон, который поворачивается на раскрытии.
+  Волосяные линии сверху и снизу отделяют её от текста вокруг — язык .list-item,
+  который в приложении уже везде.
+*/
 .fold > summary {
   list-style: none; cursor: pointer;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: var(--sp-2) 0;
-  font-size: 11px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: .09em; color: var(--outline);
+  display: flex; align-items: center; gap: var(--sp-3);
+  min-height: 48px; padding: var(--sp-2) var(--sp-1);
+  border-top: 1px solid var(--outline-variant);
+  border-bottom: 1px solid var(--outline-variant);
+  font-size: 15px; font-weight: 500; color: var(--on-surface);
+  transition: background var(--dur-fast) var(--ease);
 }
+.fold > summary:active { background: var(--surface-container); }
 .fold > summary::-webkit-details-marker { display: none; }
-.fold > summary::after { content: "▾"; letter-spacing: 0; }
-.fold[open] > summary::after { content: "▴"; }
+.fold > summary .grow { flex: 1; min-width: 0; }
+.fold > summary .sub {
+  font-size: 13px; font-weight: 400; color: var(--on-surface-variant);
+}
+.fold > summary .chev {
+  flex: 0 0 20px; width: 20px; height: 20px; color: var(--on-surface-variant);
+  transition: transform var(--dur-base) var(--ease);
+}
+.fold[open] > summary .chev { transform: rotate(180deg); }
 
 /* Три числа профиля в ряд — это и есть содержимое раздела, а не подпись к нему. */
 .stats { display: flex; gap: var(--sp-2); }
@@ -605,17 +813,7 @@ label {
 }
 .stat .k { font-size: 11px; color: var(--on-surface-variant); margin-top: 2px; }
 
-/* Пара плиток «прошлый раз / рекорд»: две цифры, которые смотрят перед подходом. */
-.tiles { display: flex; gap: var(--sp-2); }
-.tile {
-  flex: 1; min-width: 0;
-  background: var(--surface-container-low);
-  border-radius: var(--shape-md); padding: var(--sp-2) var(--sp-3);
-}
-.tile .k { font-size: 11px; color: var(--on-surface-variant); }
-.tile .v { font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }
-
-/* Записанные подходы — по ним же их и правят. */
+/* Строка «подход / результат» в истории профиля. */
 .set-chip {
   display: flex; align-items: center; justify-content: space-between;
   padding: var(--sp-2) var(--sp-1); font-size: 14px;
@@ -633,7 +831,10 @@ label {
 .plan-item:last-child { border-bottom: 0; }
 .plan-item.done { opacity: .45; }
 .plan-item.now  { color: var(--on-surface); font-weight: 500; }
-.plan-item .mark { width: 18px; text-align: center; color: var(--primary); }
+/* Отметка приглушена так же, как в таблице подходов: два списка на одном экране
+   должны выглядеть роднёй. Красить в акцент ещё и «·» будущего шага было прямо
+   неверно — насыщенный primary на экране остаётся у одной кнопки. */
+.plan-item .mark { width: 18px; text-align: center; color: var(--outline); }
 
 /* Отдых: кольцо обратного отсчёта. */
 .ring { width: 168px; height: 168px; margin: var(--sp-1) auto var(--sp-4); position: relative; }
@@ -738,12 +939,14 @@ body.with-nav #rest-bar {
   между разделами читался как «здесь погасло, там зажглось». Отдельный элемент
   ЕДЕТ — а во время свайпа ещё и тянется за пальцем, связывая жест с результатом.
 
-  Ширина колонки — ровно 1/4 панели, поэтому позиция это просто номер раздела:
-  никаких измерений кнопок и пересчётов на resize.
+  Ширина колонки — ровно доля панели на один раздел, поэтому позиция это просто
+  номер раздела: никаких измерений кнопок и пересчётов на resize. Число разделов
+  приезжает из разметки через --nav-n; раньше здесь стояло захардкоженное 25%,
+  и удаление одной кнопки разъехалось бы с пузырьком.
 */
 .nav-bubble {
   position: absolute; top: var(--sp-2); left: 0;
-  width: 25%; height: 32px; pointer-events: none;
+  width: calc(100% / var(--nav-n, 4)); height: 32px; pointer-events: none;
   transform: translate3d(calc(var(--nav-i) * 100%), 0, 0);
 }
 .nav-bubble::before {

@@ -12,22 +12,28 @@ import { haptic } from './tg.js';
 
 const node = document.getElementById('nav');
 
-/** Разделы верхнего уровня. Порядок совпадает с порядком кнопок в разметке. */
-const SECTIONS = ['/', '/schedule', '/programs', '/profile'];
+/**
+ * Разделы верхнего уровня. Порядок совпадает с порядком кнопок в разметке.
+ *
+ * Программ здесь нет: их собирают раз в несколько месяцев, а вкладка стояла наравне
+ * с тем, чем пользуются каждую тренировку. Переехали в профиль — туда же, где живёт
+ * всё остальное «про меня, а не про сегодня».
+ */
+const SECTIONS = ['/', '/schedule', '/profile'];
 
 /**
  * Куда ведёт кнопка для текущего адреса.
  *
  * Вложенные экраны подсвечивают свой корень: со страницы дня горит «Расписание»,
- * с истории и рекордов — «Профиль». Иначе на большинстве экранов панель выглядела бы
- * погасшей и переставала объяснять, где пользователь находится.
+ * с истории, рекордов и программ — «Профиль». Иначе на большинстве экранов панель
+ * выглядела бы погасшей и переставала объяснять, где пользователь находится.
  */
 export function sectionOf(path) {
   if (path === '/') return '/';
   if (path.startsWith('/schedule') || path.startsWith('/day/')) return '/schedule';
-  if (path.startsWith('/programs') || path.startsWith('/program/')) return '/programs';
   if (path.startsWith('/profile') || path.startsWith('/history')
-      || path.startsWith('/records') || path.startsWith('/progress/')) return '/profile';
+      || path.startsWith('/records') || path.startsWith('/progress/')
+      || path.startsWith('/programs') || path.startsWith('/program/')) return '/profile';
   return null;
 }
 

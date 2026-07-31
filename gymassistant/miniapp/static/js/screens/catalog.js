@@ -105,24 +105,24 @@ export async function exerciseScreen({ dayId, id }) {
     <h1>${escape(exercise.name)}</h1>
     <p class="subtitle">${escape(exercise.description || '')}</p>
 
-    <label>Подходов</label>
+    <!-- Подписи только в <label>: у степпера есть и своя, .unit, но здесь она
+         повторила бы слово в слово то, что уже написано над полем. -->
+    <label for="sets">Подходов</label>
     <div class="stepper compact">
-        <button data-field="sets" data-delta="-1">−</button>
+        <button data-field="sets" data-delta="-1" aria-label="Подходов: минус 1">−</button>
         <div class="value">
           <input id="sets" type="number" inputmode="numeric" value="${exercise.sets}" min="1" max="20">
-          <div class="unit">подходов</div>
         </div>
-        <button data-field="sets" data-delta="1">+</button>
+        <button data-field="sets" data-delta="1" aria-label="Подходов: плюс 1">+</button>
     </div>
 
-    <label class="mt-4">Повторений в подходе</label>
+    <label class="mt-4" for="reps">Повторений в подходе</label>
     <div class="stepper compact">
-        <button data-field="reps" data-delta="-1">−</button>
+        <button data-field="reps" data-delta="-1" aria-label="Повторений: минус 1">−</button>
         <div class="value">
           <input id="reps" type="number" inputmode="numeric" value="${exercise.reps}" min="1" max="100">
-          <div class="unit">повторений</div>
         </div>
-        <button data-field="reps" data-delta="1">+</button>
+        <button data-field="reps" data-delta="1" aria-label="Повторений: плюс 1">+</button>
     </div>
 
     <div class="switch-card mt-4">
