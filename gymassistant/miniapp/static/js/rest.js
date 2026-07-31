@@ -115,7 +115,7 @@ function draw() {
   bar.innerHTML = `
     <div class="grow">
       <div class="time">Отдых ${clock(left)}</div>
-      ${nextUp ? `<div style="font-size:13px;opacity:.85">Дальше: ${escape(nextUp)}</div>` : ''}
+      ${nextUp ? `<div class="next">Дальше: ${escape(nextUp)}</div>` : ''}
     </div>
     <button id="rest-skip">Закончить</button>
   `;

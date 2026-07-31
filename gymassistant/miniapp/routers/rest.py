@@ -8,7 +8,6 @@
 from fastapi import APIRouter
 
 from database.orm_extra import orm_get_rest_timer, orm_start_rest_timer, orm_stop_rest_timer
-from database.orm_query import orm_get_program
 from miniapp.db import Session
 from miniapp.deps import CurrentUser
 from miniapp.schemas import RestIn
@@ -26,15 +25,12 @@ async def get_rest(user: CurrentUser, session: Session):
 @router.post("/start")
 async def start_rest(body: RestIn, user: CurrentUser, session: Session):
     """Отдых руками: продлить, когда к стойке очередь, или отдохнуть вне тренировки."""
-    program = await orm_get_program(session, user.actual_program_id) if user.actual_program_id else None
-
     timer = await orm_start_rest_timer(
         session,
         user_id=user.user_id,
         chat_id=user.user_id,
         seconds=body.seconds,
         next_up=body.next_up,
-        quiet=program.quiet_rest_pings if program else True,
     )
     return {"ok": True, "rest": rest_json(timer)}
 

@@ -2,7 +2,7 @@
 Что приходит от фронта.
 
 Границы здесь не косметические: вес 10^9 кг или ноль повторений навсегда испортят
-и графики, и вход LSTM, а починить это потом можно только руками в SQL.
+и графики, а починить это потом можно только руками в SQL.
 """
 from pydantic import BaseModel, Field
 
@@ -18,6 +18,14 @@ class SetIn(BaseModel):
     exercise_id: int
     weight: float = Field(ge=0, le=1000)
     reps: int = Field(ge=1, le=1000)
+
+
+class SkipIn(BaseModel):
+    session_id: str
+    exercise_id: int
+    # true — списать разом все оставшиеся подходы упражнения («не идёт сегодня»),
+    # false — только текущий («этот не смог, следующий попробую»).
+    whole_exercise: bool = False
 
 
 class SetEditIn(BaseModel):
@@ -46,7 +54,6 @@ class ProgramPatchIn(BaseModel):
     circular_rounds: int | None = Field(default=None, ge=1, le=20)
     circular_rest_between_rounds: int | None = Field(default=None, ge=0, le=3600)
     circular_rest_between_exercise: int | None = Field(default=None, ge=0, le=3600)
-    quiet_rest_pings: bool | None = None
 
 
 class DayExerciseIn(BaseModel):

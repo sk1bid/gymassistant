@@ -9,6 +9,7 @@
 import { api } from './api.js';
 import { route, start } from './router.js';
 import * as rest from './rest.js';
+import * as swipe from './swipe.js';
 import { ready } from './tg.js';
 
 import { homeScreen } from './screens/home.js';
@@ -75,5 +76,9 @@ if (!explicitRoute) {
 
 // Отдых мог начаться в прошлый заход и всё это время идти на сервере.
 rest.refresh();
+
+// Свайп между разделами. Подключается здесь, а не в роутере: роутер про жесты
+// ничего знать не должен, а swipe.js уже зависит от него ради go().
+swipe.start();
 
 start();

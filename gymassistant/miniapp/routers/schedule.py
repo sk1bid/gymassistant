@@ -1,4 +1,5 @@
 """Главный экран и расписание."""
+from datetime import date, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter
@@ -6,7 +7,11 @@ from fastapi import APIRouter
 from database.orm_extra import (
     orm_delete_empty_sessions,
     orm_get_active_session,
+    orm_get_exercises_of_days,
     orm_get_rest_timer,
+    orm_get_sessions_summary,
+    orm_get_trained_day_ids,
+    utcnow,
 )
 from database.orm_query import (
     orm_get_exercises,
@@ -30,18 +35,103 @@ def today_ru(tz: ZoneInfo) -> str:
 
 
 async def week(session: Session, program_id: int) -> list[dict]:
-    """Дни программы в порядке Пн→Вс — в БД они лежат в порядке вставки."""
+    """
+    Дни программы в порядке Пн→Вс — в БД они лежат в порядке вставки.
+
+    Упражнения всех семи дней забираются одним запросом. Раньше здесь был вызов
+    orm_get_exercises внутри цикла: семь последовательных обращений к постгресу
+    на каждое открытие главной и расписания, и их задержки складывались — экран
+    заметно «думал» перед появлением.
+    """
     days = await orm_get_training_days(session, program_id)
     by_name = {d.day_of_week.strip().lower(): d for d in days}
 
-    out = []
-    for name in WEEK_DAYS_RU:
-        day = by_name.get(name.lower())
-        if not day:
-            continue
-        exercises = await orm_get_exercises(session, day.id)
-        out.append({**day_json(day), "exercises": [exercise_json(e) for e in exercises]})
-    return out
+    ordered = [by_name[name.lower()] for name in WEEK_DAYS_RU if name.lower() in by_name]
+    exercises = await orm_get_exercises_of_days(session, [d.id for d in ordered])
+
+    return [
+        {**day_json(day), "exercises": [exercise_json(e) for e in exercises.get(day.id, [])]}
+        for day in ordered
+    ]
+
+
+async def missed_day(session: Session, user, tz, days: list[dict]) -> dict | None:
+    """
+    Последний пропущенный тренировочный день, если он есть.
+
+    Пропуск — это день программы с упражнениями, чей день недели уже прошёл, а
+    тренировки по нему за последнюю неделю не было. Отдаём ОДИН день, самый свежий,
+    а не список: пять строк «пропущено» на главной были бы упрёком, а не помощью.
+
+    Три границы, каждая по своей причине.
+
+    **Сравниваем дни ПРОГРАММЫ, а не даты.** Отработал понедельник во вторник —
+    это перенос, и в среду напоминать не о чем: сессия помнит `training_day_id`,
+    и день считается закрытым независимо от того, какого числа его закрыли.
+
+    **Свежесть — неделя.** Окно стоит на выборке тренировок: то, что делалось
+    больше семи суток назад, день уже не закрывает. Иначе тренировка месячной
+    давности вечно гасила бы напоминание о том же дне недели.
+
+    **Ищем шесть дней назад, а не семь.** Седьмой — это тот же день недели, что
+    сегодня, то есть СЕГОДНЯШНЯЯ тренировка. Предлагать «отработать» то, что и так
+    стоит в плане на сегодня, бессмысленно: экран показал бы один и тот же день
+    дважды, и обе кнопки открыли бы одну и ту же тренировку. Заодно это и есть
+    правило «пропущенное должно идти строго ПЕРЕД тем, что будет»: при поиске на
+    шесть дней у дня всегда остаётся хотя бы сутки до его собственного повтора.
+    """
+    planned = {d["day_of_week"].strip().lower(): d for d in days if d["exercises"]}
+    if not planned:
+        return None
+
+    today = today_in(tz)
+    trained = await orm_get_trained_day_ids(session, user.user_id, utcnow() - timedelta(days=7))
+
+    for back in range(1, 7):
+        past = today - timedelta(days=back)
+        day = planned.get(WEEK_DAYS_RU[past.weekday()].lower())
+        if day and day["id"] not in trained:
+            return {"id": day["id"], "day_of_week": day["day_of_week"], "days_ago": back}
+
+    return None
+
+
+async def weekly_progress(session: Session, user, tz: ZoneInfo, goal: int) -> dict:
+    """
+    Прогресс недели и серия — мотивационная сводка для главного экрана.
+
+    «Сделано» — сколько РАЗНЫХ дней текущей календарной недели (Пн→сегодня) были
+    тренировочными; «цель» — сколько тренировочных дней в программе. Серия — сколько
+    недель подряд была хотя бы одна тренировка.
+
+    Серия считается мягко: текущая неделя не рвёт её, пока не кончилась. Если на этой
+    неделе тренировок ещё нет, отсчёт начинается с прошлой недели (грейс) — иначе
+    серия обнулялась бы каждый понедельник, а пропуск дня в зале бывает по делу
+    (болезнь, разгрузка), и наказывать за него сбросом цепочки — демотивирует.
+
+    Дата тренировки хранится в naive-UTC, а неделя раскладывается по КАЛЕНДАРЮ
+    пользователя: тренировка в 6 утра по Новосибирску — это 23:00 UTC накануне,
+    и без перевода в пояс часть тренировок села бы в соседнюю неделю.
+    """
+    rows = await orm_get_sessions_summary(session, user.user_id, limit=400)
+
+    trained: set[date] = set()
+    for row in rows:
+        if row.date:
+            trained.add(row.date.replace(tzinfo=timezone.utc).astimezone(tz).date())
+
+    today = today_in(tz)
+    week_start = today - timedelta(days=today.weekday())
+    done = sum(1 for day in trained if week_start <= day <= today)
+
+    weeks_with = {day - timedelta(days=day.weekday()) for day in trained}
+    anchor = week_start if week_start in weeks_with else week_start - timedelta(days=7)
+    streak = 0
+    while anchor in weeks_with:
+        streak += 1
+        anchor -= timedelta(days=7)
+
+    return {"done": done, "goal": goal, "streak": streak}
 
 
 @router.get("/bootstrap")
@@ -56,9 +146,14 @@ async def bootstrap(user: CurrentUser, session: Session, tz: ClientTz):
 
     today_name = today_ru(tz)
     today = None
+    missed = None
+    week_progress = None
     if user.actual_program_id:
         days = await week(session, user.actual_program_id)
         today = next((d for d in days if d["day_of_week"].strip().lower() == today_name.lower()), None)
+        missed = await missed_day(session, user, tz, days)
+        goal = sum(1 for day in days if day["exercises"])
+        week_progress = await weekly_progress(session, user, tz, goal)
 
     return {
         "ok": True,
@@ -67,6 +162,8 @@ async def bootstrap(user: CurrentUser, session: Session, tz: ClientTz):
         "has_program": bool(user.actual_program_id),
         "today": today,
         "today_name": today_name,
+        "missed": missed,
+        "week": week_progress,
         "active_session": str(active.id) if active else None,
         "rest": rest_json(timer),
     }

@@ -15,7 +15,6 @@ import aiohttp
 
 from database.orm_query import (
     orm_add_user,
-    orm_get_last_sets_for_exercise,
     orm_update_user,
     orm_add_program,
     orm_get_user_by_id,
@@ -49,7 +48,6 @@ from handlers.menu_processing import get_menu_content
 from kbds.inline import MenuCallBack, get_url_btns, error_btns, get_callback_btns
 from kbds.reply import get_keyboard
 from utils.separator import get_action_part
-from services.neiro_api import get_press_prediction
 
 user_private_router = Router()
 user_private_router.message.filter(F.chat.type == "private")
@@ -1036,7 +1034,6 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
         current_session_id=None  # Текущая сессия ещё не создана
     )
     prev_sets = ""
-    predict_text = ""
     set_list = raw_set_list
     if len(raw_set_list) > next_ex.base_sets:
         set_list = raw_set_list[-next_ex.base_sets:]
@@ -1051,16 +1048,6 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
                 )
             else:
                 prev_sets += f"<strong>Подход {i + 1}: еще не выполнен\n</strong>"
-        if next_ex.name.lower() in ["жим штанги лежа", "жим лёжа", "bench press"]:
-            last_sets = await orm_get_last_sets_for_exercise(session, next_ex.id, user_id)
-            prediction = await get_press_prediction(last_sets)
-            if prediction:
-                next_weight = prediction.get("next_weight")
-                rec_text = prediction.get("recommendation", "")
-                if next_weight is not None:
-                    predict_text = f"🤖 Рекомендация нейросети:\nПопробуй <strong>{next_weight:.1f} кг</strong> в этом подходе.\n\n{rec_text}"
-                else:
-                    predict_text = f"🤖 Нейросеть пока не готова дать рекомендацию.\n{rec_text or ''}"
     if prev_sets == "":
         prev_sets = "----------------------------------------\n<strong>Результаты не обнаружены</strong>\n"
 
@@ -1072,7 +1059,7 @@ async def first_result_message(session: AsyncSession, user_id, next_ex):
         f"----------------------------------------\n\n"
     )
     end_text = f"Подход <strong>1 из {next_ex.base_sets}</strong> \nВведите вес снаряда:"
-    text = text + predict_text + end_text
+    text = text + end_text
     
     logging.info(f"frm ex id: {next_ex.name}")
     return text
@@ -1090,7 +1077,6 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
     if len(raw_set_list) > next_ex.base_sets:
         set_list = raw_set_list[-next_ex.base_sets:]
     prev_sets = ""
-    predict_text = ""
     if set_list:
         for i in range(next_ex.base_sets):
             flag = False
@@ -1127,17 +1113,6 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
                 prev_sets += (f"<strong>Подход {i + 1} 👇\n"
                               f"🦾: {current_sets[i].weight} кг/блок {weight_factor}\n"
                               f"🧮: {current_sets[i].repetitions} повтр. {reps_factor}\n</strong>")
-                
-        if next_ex.name.lower() in ["жим штанги лежа", "жим лёжа", "bench press"]:
-            last_sets = await orm_get_last_sets_for_exercise(session, next_ex.id, user_id)
-            prediction = await get_press_prediction(last_sets)
-            if prediction:
-                next_weight = prediction.get("next_weight")
-                rec_text = prediction.get("recommendation", "")
-                if next_weight is not None:
-                    predict_text = f"🤖 Рекомендация нейросети:\nПопробуй {next_weight:.1f} кг в этом подходе.\n\n{rec_text}"
-                else:
-                    predict_text = f"🤖 Нейросеть пока не готова дать рекомендацию.\n{rec_text or ''}"
     else:
         prev_sets = "----------------------------------------\n<strong>Результаты не обнаружены</strong>\n"
     max_weight = await orm_get_exercise_max_weight(session, user_id, next_ex.id)
@@ -1148,7 +1123,7 @@ async def result_message_after_set(session: AsyncSession, user_id, next_ex, set_
         f"----------------------------------------\n"  
     )
     end_text = f"Подход <strong>{set_index} из {next_ex.base_sets}</strong> \nВведите вес снаряда:"
-    text = text + predict_text + end_text
+    text = text + end_text
     logging.info(f"rmas ex id: {next_ex.name}, session_id: {session_id}")
     return text
 

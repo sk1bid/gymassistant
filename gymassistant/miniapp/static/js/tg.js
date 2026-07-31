@@ -28,11 +28,41 @@ export const timeZone = (() => {
   catch { return ''; }
 })();
 
+/**
+ * Светлая или тёмная схема.
+ *
+ * По умолчанию решает система: в CSS стоит @media (prefers-color-scheme: dark).
+ * Но внутри Telegram системной настройки мало — клиент разрешает держать тёмную тему
+ * на светлой системе и наоборот, и тогда media-запрос покажет не то. Поэтому, когда
+ * Telegram есть, его выбор ставится в data-theme на <html> и перебивает media в обе
+ * стороны. В обычном браузере атрибут не ставится вовсе — работает системная.
+ *
+ * Заодно красим служебные полосы клиента в цвет своей поверхности: иначе шапка
+ * остаётся телеграмовской, а страница под ней — нашей, и стык видно.
+ */
+function applyTheme() {
+  if (!tg) return;
+
+  document.documentElement.dataset.theme = tg.colorScheme === 'dark' ? 'dark' : 'light';
+
+  // Читаем уже применённое значение токена, чтобы не держать второй список цветов.
+  const surface = getComputedStyle(document.documentElement)
+    .getPropertyValue('--surface').trim();
+
+  if (!surface) return;
+  tg.setBackgroundColor?.(surface);
+  tg.setHeaderColor?.(surface);
+  tg.setBottomBarColor?.(surface);
+}
+
 export function ready() {
   if (!tg) return;
   tg.ready();
   tg.expand();
   tg.disableVerticalSwipes?.();   // иначе свайп по степперу закрывает приложение
+
+  applyTheme();
+  tg.onEvent?.('themeChanged', applyTheme);   // тему могут переключить, не закрывая нас
 }
 
 /** Вибрация. Без неё степперы ощущаются мёртвыми. */
@@ -64,7 +94,20 @@ export function mainButton(text, handler) {
   }
 
   mainButtonHandler = handler;
-  tg.MainButton.setText(text);
+
+  // Красим в свою палитру: без setParams Telegram рисует кнопку своим синим,
+  // и она выпадает из оформления — единственный чужой цвет на экране.
+  // Цвета берём из уже применённых токенов, чтобы не держать их вторым списком.
+  const css = getComputedStyle(document.documentElement);
+  const color = css.getPropertyValue('--primary').trim();
+  const textColor = css.getPropertyValue('--on-primary').trim();
+
+  if (color && textColor) {
+    tg.MainButton.setParams({ text, color, text_color: textColor });
+  } else {
+    tg.MainButton.setText(text);
+  }
+
   tg.MainButton.onClick(mainButtonHandler);
   tg.MainButton.show();
 }

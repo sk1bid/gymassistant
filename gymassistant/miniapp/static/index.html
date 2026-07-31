@@ -10,13 +10,66 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- Единственный узел приложения: экраны рисует JS, разметки в HTML нет. -->
-  <main id="app">
-    <div class="center-screen"><div class="spinner"></div></div>
+  <!-- Экраны рисует JS, разметки в HTML нет.
+
+       Панелей ДВЕ, а не одна: во время свайпа между разделами соседний экран
+       рисуется во вторую и выезжает из-под пальца вместе с текущим. После
+       перехода панели меняются ролями — содержимое никуда не переносится,
+       поэтому навешанные обработчики остаются живы. -->
+  <main id="viewport">
+    <!-- #viewport отсекает, #track едет. Это ДВА разных элемента намеренно:
+         если повесить overflow и transform на один, область отсечения поедет
+         вместе с содержимым, и соседняя панель никогда не покажется из-за края. -->
+    <div id="track">
+      <div class="screen" id="screen-a">
+        <div class="center-screen"><div class="spinner"></div></div>
+      </div>
+      <div class="screen" id="screen-b" hidden></div>
+    </div>
   </main>
 
   <!-- Отдых показывается поверх любого экрана: он не должен мешать листать программу. -->
   <div id="rest-bar" class="hidden"></div>
+
+  <!-- Нижняя навигация. Разметка статична, а активный раздел и видимость ставит
+       nav.js по текущему маршруту. Иконки — инлайновый SVG, а не эмодзи: эмодзи
+       рисуются шрифтом системы и на iOS, Android и десктопе выглядят по-разному. -->
+  <!-- --nav-n — сколько здесь кнопок. Ширина пузырька и шаг его хода считаются
+       от него в CSS, поэтому раздел добавляется или убирается правкой разметки
+       и одного этого числа, без пересчёта процентов по файлу стилей. -->
+  <nav id="nav" class="nav hidden" style="--nav-n: 3">
+    <!-- Пузырёк активного раздела — один на всю панель, а не подложка под каждой
+         кнопкой: только так он может ехать между разделами и тянуться за пальцем
+         во время свайпа. Позицию задаёт nav.js через --nav-i. -->
+    <span class="nav-bubble" aria-hidden="true"></span>
+    <button data-nav="/">
+      <span class="ind">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6.5 8v8M4 10.5v3M17.5 8v8M20 10.5v3M6.5 12h11"/>
+        </svg>
+      </span>
+      Сегодня
+    </button>
+    <button data-nav="/schedule">
+      <span class="ind">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/>
+        </svg>
+      </span>
+      Расписание
+    </button>
+    <button data-nav="/profile">
+      <span class="ind">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 4v16h16"/><path d="M8 15l3.5-4.5 3 2.5L20 7"/>
+        </svg>
+      </span>
+      Профиль
+    </button>
+  </nav>
 
   <!-- ?v — стабильный «cache namespace», НЕ версия сборки. Мобильный Telegram кэширует
        статику намертво; копии, легшие в кэш ДО заголовка no-cache, он не ревалидирует.

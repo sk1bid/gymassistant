@@ -42,8 +42,6 @@ spec:
             valueFrom: { secretKeyRef: { name: bot-secrets, key: PORT } }
           - name: DB_URL
             valueFrom: { secretKeyRef: { name: bot-secrets, key: DB_URL } }
-          - name: NEIRO_API_URL
-            value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
           - name: ADMIN_IDS
             valueFrom: { secretKeyRef: { name: bot-secrets, key: ADMIN_IDS } }
           - name: PROXY_URL
@@ -54,8 +52,11 @@ spec:
             value: "true"
           # Куда ведёт кнопка меню бота. Саму страницу телефон грузит с sk1bid.ru
           # напрямую — блокировка Telegram на Mini App не распространяется.
+          # ?v бампается вместе с выкаткой, которая меняет styles.css: версии в имени
+          # файла нет, а вебвью Telegram держит страницу цепко — иначе можно получить
+          # новый JS поверх старой вёрстки. Тест-контур бампает свой (?v=3) отдельно.
           - name: MINIAPP_URL
-            value: "https://sk1bid.ru/gym/"
+            value: "https://sk1bid.ru/gym/?v=4"
       - name: ss-client
         imagePullPolicy: IfNotPresent
         image: shadowsocks/shadowsocks-libev:latest

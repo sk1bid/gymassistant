@@ -6,13 +6,20 @@
  * календарь показывал числа, за которыми не стояло ничего, кроме дня недели.
  * Поэтому здесь честная неделя Пн→Вс с сегодняшним днём, поднятым наверх смыслом.
  */
-import { api } from './../api.js';
+import { api, cached } from './../api.js';
 import { go } from './../router.js';
-import { escape, on, onAction, render } from './../ui.js';
+import { escape, on, onAction, plural, render, same } from './../ui.js';
 
 export async function scheduleScreen() {
-  const data = await api.schedule();
+  // Мгновенная отрисовка из последнего ответа, свежий — следом. См. home.js.
+  const known = cached('api/schedule');
+  if (known) paintSchedule(known);
 
+  const data = await api.schedule();
+  if (!known || !same(known, data)) paintSchedule(data);
+}
+
+function paintSchedule(data) {
   if (!data.program) {
     render(`
       <h1>Расписание</h1>
@@ -26,21 +33,19 @@ export async function scheduleScreen() {
 
   render(`
     <h1>Расписание</h1>
-    <p class="hint" style="margin:-8px 0 16px 4px">${escape(data.program.name)}</p>
+    <p class="subtitle">${escape(data.program.name)}</p>
 
     ${data.days.map((day) => {
       const isToday = day.day_of_week === data.today;
-      const count = day.exercises.length;
 
       return `
         <button class="list-item" data-day="${day.id}">
           <span class="grow">
-            <span class="title">
-              ${escape(day.day_of_week)}
-              ${isToday ? '<span class="pill on" style="margin-left:6px">сегодня</span>' : ''}
-            </span><br>
+            <span class="title">${escape(day.day_of_week)}</span>
+            ${isToday ? '<span class="pill on">сегодня</span>' : ''}
+            <br>
             <span class="sub">
-              ${count
+              ${day.exercises.length
                 ? escape(day.exercises.map((e) => e.name).join(', '))
                 : 'отдых'}
             </span>
@@ -57,9 +62,16 @@ export async function scheduleScreen() {
 export async function dayScreen({ id }) {
   const data = await api.day(Number(id));
   const exercises = data.exercises;
+  const sets = exercises.reduce((sum, e) => sum + e.sets, 0);
 
   render(`
     <h1>${escape(data.day.day_of_week)}</h1>
+    <p class="subtitle">
+      ${exercises.length
+        ? `${plural(exercises.length, 'упражнение', 'упражнения', 'упражнений')} ·
+           ${plural(sets, 'подход', 'подхода', 'подходов')}`
+        : 'День отдыха'}
+    </p>
 
     ${exercises.length ? '' : `
       <div class="empty">
@@ -68,32 +80,23 @@ export async function dayScreen({ id }) {
     `}
 
     ${exercises.map((exercise, index) => `
-      <div class="card tight">
-        <div class="row">
-          <div class="grow">
-            <div style="font-weight:600">
-              ${escape(exercise.name)}
-              ${exercise.circle ? '<span class="pill" style="margin-left:4px">круговое</span>' : ''}
-            </div>
-            <div class="hint">${exercise.sets} × ${exercise.reps}</div>
-          </div>
-          <button class="btn secondary small" data-edit="${exercise.id}">Настроить</button>
-        </div>
-
-        <div class="row" style="margin-top:10px;justify-content:flex-start;gap:8px">
-          <button class="btn secondary small" data-up="${exercise.id}" ${index === 0 ? 'disabled' : ''}>↑</button>
-          <button class="btn secondary small" data-down="${exercise.id}"
-                  ${index === exercises.length - 1 ? 'disabled' : ''}>↓</button>
-          <button class="btn danger small" data-remove="${exercise.id}">Убрать</button>
-        </div>
+      <div class="ex-row">
+        <button class="ex-main" data-edit="${exercise.id}">
+          <span class="title">${escape(exercise.name)}</span>
+          ${exercise.circle ? '<span class="pill">круговое</span>' : ''}
+          <br>
+          <span class="sub num">${exercise.sets} × ${exercise.reps}</span>
+        </button>
+        <button class="icon-btn" data-up="${exercise.id}"
+                aria-label="Выше" ${index === 0 ? 'disabled' : ''}>↑</button>
+        <button class="icon-btn" data-down="${exercise.id}"
+                aria-label="Ниже" ${index === exercises.length - 1 ? 'disabled' : ''}>↓</button>
       </div>
     `).join('')}
 
-    <button class="btn secondary" data-add>Добавить упражнение</button>
+    <button class="btn secondary mt-4" data-add>Добавить упражнение</button>
 
-    ${exercises.length ? `
-      <button class="btn" id="start" style="margin-top:8px">Начать тренировку</button>
-    ` : ''}
+    ${exercises.length ? '<button class="btn mt-2" id="start">Начать тренировку</button>' : ''}
   `);
 
   on('#start', 'click', () => go(`/workout/${data.day.id}`));
@@ -109,11 +112,6 @@ export async function dayScreen({ id }) {
 
   onAction('[data-down]', async (node) => {
     await api.exercises.move(Number(node.dataset.down), false);
-    await dayScreen({ id });
-  });
-
-  onAction('[data-remove]', async (node) => {
-    await api.exercises.remove(Number(node.dataset.remove));
     await dayScreen({ id });
   });
 }

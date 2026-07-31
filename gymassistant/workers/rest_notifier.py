@@ -18,9 +18,15 @@
 
 2. Таймер живёт в БД, а не в памяти. Раньше он крутился в asyncio-таске с состоянием
    в FSM (MemoryStorage), и рестарт пода тихо убивал отдых на середине.
+
+Все пинги звонкие. Раньше промежуточные минуты уходили с disable_notification (флаг
+`quiet_rest_pings` в настройках программы, по умолчанию включённый) — то есть ровно
+то сообщение, ради которого телефон лежит на скамье, приходило беззвучно, и человек
+узнавал об окончании отдыха, только заглянув в чат.
 """
 import asyncio
 import logging
+import math
 from datetime import timedelta
 
 from aiogram import Bot, F, Router, types
@@ -44,8 +50,6 @@ REST_END_BUTTON = "🏄‍♂️ Закончить отдых"
 # Как часто воркер просыпается. Пинги — раз в минуту, но окончание отдыха надо
 # ловить точнее, чем с минутной погрешностью.
 TICK_SECONDS = 5
-# За сколько секунд до конца звонко предупреждаем.
-WARN_BEFORE = 30
 # Сколько «🔔 Отдых окончен!» висит в чате, если следующего отдыха уже не будет
 # (конец тренировки). Пуш к этому моменту давно пришёл — дальше это просто мусор.
 REST_DONE_TTL = 180
@@ -130,40 +134,46 @@ async def _handle_timer(bot: Bot, session, timer) -> None:
     if not _should_ping(timer, left):
         return
 
-    # Предупреждение за 30 секунд и есть тот самый звонкий пинг: промежуточные минуты
-    # приходят тихо, чтобы не дёргать человека посреди подхода (настройка программы).
-    warning = left <= WARN_BEFORE
-    silent = timer.quiet and not warning
-
     await _delete_quietly(bot, timer.chat_id, timer.message_id)
 
     sent = await bot.send_message(
         timer.chat_id,
         _ping_text(left, timer.next_up),
         reply_markup=get_keyboard(REST_END_BUTTON),
-        disable_notification=silent,
     )
-    await orm_save_rest_ping(session, timer.id, sent.message_id, warned=warning or timer.warned)
+    await orm_save_rest_ping(session, timer.id, sent.message_id)
+
+
+def _minutes_left(seconds: float) -> int:
+    """Сколько минут отдыха человек ещё считает оставшимися: 119 секунд — это «2 мин»."""
+    return math.ceil(max(0, seconds) / 60)
 
 
 def _should_ping(timer, left: int) -> bool:
-    """Первый пинг — сразу; дальше раз в минуту; и отдельно — предупреждение под конец."""
-    if timer.last_ping is None:
-        return True
+    """
+    Пинг на каждой пройденной границе минуты — и только на ней.
 
-    if left <= WARN_BEFORE and not timer.warned:
-        return True
+    Раньше отсчёт шёл «60 секунд от прошлого пинга», и текст плыл: сообщения
+    приходили не на круглых минутах, а когда придётся, из-за чего под конец
+    «осталась 1 минута» и предупреждение за 30 секунд шли почти подряд.
 
-    return (utcnow() - timer.last_ping).total_seconds() >= 60
+    Стартового пинга нет: в этот момент человек только что записал подход и смотрит
+    в приложение, где отсчёт и так идёт. Для минутного отдыха это значит ровно одно
+    уведомление — «Отдых окончен!», и это правильно: сообщать «отдыхайте ещё 1 мин»
+    в ту же секунду, когда отдых начался, незачем.
+
+    Точка отсчёта — прошлый пинг, а если его не было, начало отдыха. Пропущенные
+    границы (воркер лежал, под перезапускался) не догоняются: шлём одно сообщение
+    с актуальным остатком.
+    """
+    reference = timer.last_ping or (timer.ends_at - timedelta(seconds=timer.total_seconds))
+    was = (timer.ends_at - reference).total_seconds()
+
+    return _minutes_left(left) < _minutes_left(was)
 
 
 def _ping_text(left: int, next_up: str | None) -> str:
-    if left <= WARN_BEFORE:
-        head = f"Осталось <b>{left}</b> сек."
-    else:
-        minutes = left // 60 or 1
-        head = f"Отдыхайте ещё <b>{minutes}</b> мин."
-
+    head = f"Отдыхайте ещё <b>{_minutes_left(left)}</b> мин."
     return f"{head}\n\nДальше: {next_up}" if next_up else head
 
 

@@ -19,7 +19,6 @@ from database.orm_extra import (
 )
 from database.orm_query import orm_get_exercises, orm_get_program, orm_get_training_day
 from miniapp.serializers import day_json, exercise_json, rest_json
-from services.predictor import predict_next_weight
 from services.workout import build_plan, current_step
 
 DEFAULT_CIRCULAR_ROUNDS = 3
@@ -30,10 +29,9 @@ async def exercise_card(
     user_id: int,
     exercise,
     current_session_id=None,
-    with_ai: bool = False,
 ) -> dict:
     """
-    Карточка упражнения на экране подхода: рекорд, что было в прошлый раз, прогноз.
+    Карточка упражнения на экране подхода: рекорд и что было в прошлый раз.
 
     Всё — по личности упражнения, а не по строке Exercise: «Жим лёжа» в старой и новой
     программе это одно упражнение, поэтому рекорды больше не обнуляются при переезде.
@@ -41,15 +39,11 @@ async def exercise_card(
     previous = await orm_get_prev_sets_by_identity(session, user_id, exercise, current_session_id)
     record = await orm_get_max_weight_by_identity(session, user_id, exercise)
 
-    card = {
+    return {
         **exercise_json(exercise),
         "record": record,
         "prev": [{"weight": s.weight, "reps": s.repetitions} for s in previous],
-        # Прогноз просим только для упражнения, которое человек делает прямо сейчас:
-        # это поход в press-api, а на весь день их было бы полтора десятка.
-        "ai": await predict_next_weight(session, user_id, exercise) if with_ai else None,
     }
-    return card
 
 
 async def training_state(session: AsyncSession, user: User, training_session: TrainingSession) -> dict:
@@ -67,16 +61,27 @@ async def training_state(session: AsyncSession, user: User, training_session: Tr
 
     current = None
     if step is not None:
+        # Место упражнения в своём блоке. Нужно круговым: «круг 1 из 3» говорит,
+        # какой круг, но не сколько снарядов осталось пройти внутри него, — а именно
+        # это и хочется знать, стоя между тремя станциями. Порядок берём из плана,
+        # он же порядок выполнения.
+        block: list[int] = []
+        for planned in plan:
+            if planned.block_index == step.block_index and planned.exercise_id not in block:
+                block.append(planned.exercise_id)
+
         current = {
             "exercise": await exercise_card(
                 session, user.user_id, by_id[step.exercise_id],
-                current_session_id=training_session.id, with_ai=True,
+                current_session_id=training_session.id,
             ),
             "set_number": step.set_number,
             "total_sets": step.total_sets,
             "is_circuit": step.is_circuit,
             "round_number": step.round_number,
             "total_rounds": step.total_rounds,
+            "exercise_number": block.index(step.exercise_id) + 1,
+            "total_exercises": len(block),
         }
 
     timer = await orm_get_rest_timer(session, user.user_id)
@@ -108,6 +113,9 @@ async def training_state(session: AsyncSession, user: User, training_session: Tr
                 "name": by_id[s.exercise_id].name if s.exercise_id in by_id else "—",
                 "weight": s.weight,
                 "reps": s.repetitions,
+                # Пропущенный подход экран показывает, но иначе: он занимает своё
+                # место в тренировке, а результата за ним нет.
+                "skipped": s.skipped,
             }
             for s in done
         ],

@@ -48,8 +48,6 @@ spec:
             value: "postgresql+asyncpg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@gym-miniapp-db:5432/$(POSTGRES_DB)?ssl=disable"
           - name: MINIAPP_BOT_TOKEN
             valueFrom: { secretKeyRef: { name: miniapp-test-secrets, key: MINIAPP_BOT_TOKEN } }
-          - name: NEIRO_API_URL
-            value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
         volumeMounts:
           # Код бота переиспользуется как есть — монтируем те же три каталога, что
           # Dockerfile.miniapp копирует в образ.

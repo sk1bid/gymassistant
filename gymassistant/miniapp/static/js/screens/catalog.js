@@ -30,7 +30,6 @@ export async function catalogScreen({ dayId }) {
 
     <div class="section-title">Своё</div>
     <button class="list-item" id="mine">
-      <span class="icon">✏️</span>
       <span class="grow"><span class="title">Мои упражнения</span><br>
         <span class="sub">Создать или изменить</span></span>
       <span class="chev">›</span>
@@ -55,7 +54,7 @@ export async function categoryScreen({ dayId, categoryId }) {
         <span class="grow">
           <span class="title">
             ${escape(exercise.name)}
-            ${exercise.kind === 'user' ? '<span class="pill" style="margin-left:6px">своё</span>' : ''}
+            ${exercise.kind === 'user' ? '<span class="pill">своё</span>' : ''}
           </span><br>
           <span class="sub">${escape(exercise.description || '')}</span>
         </span>
@@ -73,9 +72,9 @@ export async function categoryScreen({ dayId, categoryId }) {
     const form = sheet(`
       <h2>Как выполнять?</h2>
       <button class="btn" id="normal">Обычное упражнение</button>
-      <p class="hint" style="margin:8px 2px 16px">Все подходы подряд, с отдыхом между ними.</p>
-      <button class="btn secondary" id="circle">Круговое</button>
-      <p class="hint" style="margin:8px 2px 0">Войдёт в круг вместе с соседними круговыми:
+      <p class="hint mt-2">Все подходы подряд, с отдыхом между ними.</p>
+      <button class="btn secondary mt-4" id="circle">Круговое</button>
+      <p class="hint mt-2">Войдёт в круг вместе с соседними круговыми:
       по одному подходу каждого, затем следующий круг.</p>
     `);
 
@@ -104,36 +103,32 @@ export async function exerciseScreen({ dayId, id }) {
 
   render(`
     <h1>${escape(exercise.name)}</h1>
-    <p class="hint" style="margin:-8px 0 16px 4px">${escape(exercise.description || '')}</p>
+    <p class="subtitle">${escape(exercise.description || '')}</p>
 
-    <div class="card">
-      <label>Подходов</label>
-      <div class="stepper">
-        <button data-field="sets" data-delta="-1">−</button>
+    <!-- Подписи только в <label>: у степпера есть и своя, .unit, но здесь она
+         повторила бы слово в слово то, что уже написано над полем. -->
+    <label for="sets">Подходов</label>
+    <div class="stepper compact">
+        <button data-field="sets" data-delta="-1" aria-label="Подходов: минус 1">−</button>
         <div class="value">
           <input id="sets" type="number" inputmode="numeric" value="${exercise.sets}" min="1" max="20">
-          <div class="unit">подходов</div>
         </div>
-        <button data-field="sets" data-delta="1">+</button>
-      </div>
+        <button data-field="sets" data-delta="1" aria-label="Подходов: плюс 1">+</button>
     </div>
 
-    <div class="card">
-      <label>Повторений в подходе</label>
-      <div class="stepper">
-        <button data-field="reps" data-delta="-1">−</button>
+    <label class="mt-4" for="reps">Повторений в подходе</label>
+    <div class="stepper compact">
+        <button data-field="reps" data-delta="-1" aria-label="Повторений: минус 1">−</button>
         <div class="value">
           <input id="reps" type="number" inputmode="numeric" value="${exercise.reps}" min="1" max="100">
-          <div class="unit">повторений</div>
         </div>
-        <button data-field="reps" data-delta="1">+</button>
-      </div>
+        <button data-field="reps" data-delta="1" aria-label="Повторений: плюс 1">+</button>
     </div>
 
-    <div class="card">
-      <label class="switch" style="margin:0">
+    <div class="switch-card mt-4">
+      <label class="switch">
         <span class="grow">
-          <span style="font-weight:600">Круговое</span><br>
+          <span class="lead">Круговое</span><br>
           <span class="hint">В круге с соседними круговыми упражнениями</span>
         </span>
         <input type="checkbox" id="circle" ${exercise.circle ? 'checked' : ''}>
@@ -141,8 +136,8 @@ export async function exerciseScreen({ dayId, id }) {
       </label>
     </div>
 
-    <button class="btn" id="save">Сохранить</button>
-    <button class="btn danger" id="remove" style="margin-top:8px">Убрать из дня</button>
+    <button class="btn mt-4" id="save">Сохранить</button>
+    <button class="btn danger mt-2" id="remove">Убрать из дня</button>
   `);
 
   onAction('[data-field]', (node) => {
@@ -198,7 +193,7 @@ export async function myExercisesScreen() {
       </button>
     `).join('')}
 
-    <button class="btn secondary" id="create" style="margin-top:8px">Создать упражнение</button>
+    <button class="btn secondary mt-4" id="create">Создать упражнение</button>
   `);
 
   on('#create', 'click', () => editUserExercise(null, categories));
@@ -234,7 +229,7 @@ function editUserExercise(exercise, categories) {
     </div>
 
     <button class="btn" id="save">Сохранить</button>
-    ${exercise ? '<button class="btn danger" id="remove" style="margin-top:8px">Удалить</button>' : ''}
+    ${exercise ? '<button class="btn danger mt-2" id="remove">Удалить</button>' : ''}
   `);
 
   form.node.querySelector('#save').onclick = async () => {

@@ -1,239 +1,1056 @@
 /*
-  Оформление под тему Telegram: цвета берём из переменных клиента, поэтому в тёмной
-  теме приложение тёмное, в светлой — светлое, и ничего не подсвечивается «чужим».
-  Фолбэки нужны для браузера, где Telegram-переменных нет (локальная отладка).
+  Дизайн-система приложения.
+
+  Палитра — тональная схема Material 3 на зелёно-нейтральном сиде. Раньше цвета брались
+  из --tg-theme-*, и приложение выглядело так, как решил клиент: акцент — телеграмовский
+  синий, поверхности — чужие. Теперь палитра своя, а от Telegram остаётся только выбор
+  схемы (светлая/тёмная) — см. --theme в tg.js.
+
+  Роли, а не цвета: код пишет --primary и --surface-container, а не «зелёный» и «серый».
+  Поэтому тёмная схема — это переопределение переменных, а не второй набор правил.
 */
+
+/* ---------------------------------------------------------------- палитра */
+
 :root {
-  --bg:      var(--tg-theme-secondary-bg-color, #0f0f13);
-  --card:    var(--tg-theme-bg-color, #1b1b21);
-  --text:    var(--tg-theme-text-color, #ffffff);
-  --hint:    var(--tg-theme-hint-color, #8b8b93);
-  --accent:  var(--tg-theme-button-color, #3390ec);
-  --on-accent: var(--tg-theme-button-text-color, #ffffff);
-  --link:    var(--tg-theme-link-color, #3390ec);
-  --danger:  #f05252;
-  --up:      #31c48d;
-  --down:    #f05252;
-  --radius:  16px;
+  color-scheme: light;
+
+  /* Основной тон: в светлой схеме — 40, текст на нём белый. */
+  --primary:               #216A49;
+  --on-primary:            #FFFFFF;
+  --primary-container:     #A7F0C6;
+  --on-primary-container:  #002110;
+
+  /* Второстепенный — для тональных кнопок: заметнее фона, тише primary. */
+  --secondary-container:   #D2E8D5;
+  --on-secondary-container: #0D1F13;
+
+
+  --error:                 #BA1A1A;
+  --on-error:              #FFFFFF;
+  --error-container:       #FFDAD6;
+  --on-error-container:    #410002;
+
+  /*
+    Поверхности. Уровень тем выше, чем «ближе» блок к пользователю; в светлой схеме
+    выше — темнее, в тёмной наоборот. Прикладной код этого не знает и просто берёт
+    нужный уровень.
+  */
+  --surface:               #F4F9F3;
+  --surface-container-low: #EEF3ED;
+  --surface-container:     #E8EEE7;
+  --surface-container-high: #E2E9E1;
+  --surface-container-highest: #DDE5DC;
+
+  --on-surface:            #131A14;
+  --on-surface-variant:    #3F4941;
+  --outline:               #707972;
+  --outline-variant:       #C0C9C0;
+
+  --scrim:                 rgba(0, 0, 0, .32);
+
+  /* Смысловые: рост и падение в дельтах и графиках. */
+  --up:   var(--primary);
+  --down: var(--error);
+
+  /* Второй цвет графиков: вес и объём — разные метрики, а не одна линия дважды. */
+  --chart-2: #3D6373;
+
+  /* Насыщенность клетки в календаре тренировок — ступени той же зелёной шкалы. */
+  --heat-0: #E2E9E1;
+  --heat-1: #C3E9D2;
+  --heat-2: #8BD4AB;
+  --heat-3: #4E9B74;
+  --heat-4: #216A49;
+
+  /* Форма. M3: кнопки — стадион, карточки и листы — крупный радиус. */
+  --shape-sm:   8px;
+  --shape-md:  12px;
+  --shape-lg:  16px;
+  --shape-xl:  28px;
+  --shape-full: 999px;
+  --radius: var(--shape-lg);
+
+  /* Шаг сетки: всё кратно 4. */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  --dur-fast: .1s;
+  --dur-base: .2s;
+  --ease: cubic-bezier(.2, 0, 0, 1);
 }
+
+/*
+  Тёмная схема. Берётся по системной настройке, а внутри Telegram — по схеме клиента:
+  tg.js ставит data-theme на <html>, и он перебивает media-запрос в обе стороны
+  (клиент может быть тёмным на светлой системе и наоборот).
+*/
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { color-scheme: dark; }
+  :root:not([data-theme="light"]) {
+    --primary:               #8BD4AB;
+    --on-primary:            #003921;
+    --primary-container:     #005234;
+    --on-primary-container:  #A7F0C6;
+
+    --secondary-container:   #384B3C;
+    --on-secondary-container: #D2E8D5;
+
+
+    --error:                 #FFB4AB;
+    --on-error:              #690005;
+    --error-container:       #93000A;
+    --on-error-container:    #FFDAD6;
+
+    --surface:               #0C120D;
+    --surface-container-low: #131A14;
+    --surface-container:     #171D18;
+    --surface-container-high: #1F251F;
+    --surface-container-highest: #2A312B;
+
+    --on-surface:            #DDE5DC;
+    --on-surface-variant:    #C0C9C0;
+    --outline:               #8A938B;
+    --outline-variant:       #3F4941;
+
+    --chart-2:               #A5CCDF;
+    --heat-0:                #1F251F;
+    --heat-1:                #14432F;
+    --heat-2:                #1E6544;
+    --heat-3:                #4E9B74;
+    --heat-4:                #8BD4AB;
+    --scrim:                 rgba(0, 0, 0, .6);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --primary:               #8BD4AB;
+  --on-primary:            #003921;
+  --primary-container:     #005234;
+  --on-primary-container:  #A7F0C6;
+
+  --secondary-container:   #384B3C;
+  --on-secondary-container: #D2E8D5;
+
+
+  --error:                 #FFB4AB;
+  --on-error:              #690005;
+  --error-container:       #93000A;
+  --on-error-container:    #FFDAD6;
+
+  --surface:               #0C120D;
+  --surface-container-low: #131A14;
+  --surface-container:     #171D18;
+  --surface-container-high: #1F251F;
+  --surface-container-highest: #2A312B;
+
+  --on-surface:            #DDE5DC;
+  --on-surface-variant:    #C0C9C0;
+  --outline:               #8A938B;
+  --outline-variant:       #3F4941;
+
+  --chart-2:               #A5CCDF;
+  --heat-0:                #1F251F;
+  --heat-1:                #14432F;
+  --heat-2:                #1E6544;
+  --heat-3:                #4E9B74;
+  --heat-4:                #8BD4AB;
+  --scrim:                 rgba(0, 0, 0, .6);
+}
+
+/* ---------------------------------------------------------------- база */
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+/*
+  Высота нижней панели навигации. Ею же отбивается низ страницы и поднимается плашка
+  отдыха — чтобы ни контент, ни плашка не оказались под панелью.
+*/
+:root { --nav-h: 68px; }
+
 body {
   margin: 0;
-  padding: 12px 12px 32px;
-  font: 16px/1.45 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
-  background: var(--bg);
-  color: var(--text);
+  /* По горизонтали полей нет: они на .screen. Иначе соседняя панель, стоящая
+     на left:100%, разъезжалась бы с текущей ровно на два поля. */
+  padding: var(--sp-4) 0 calc(var(--sp-8) + env(safe-area-inset-bottom));
+  font: 400 16px/1.45 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  background: var(--surface);
+  color: var(--on-surface);
   overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
 }
 
 .hidden { display: none !important; }
 
+#viewport { position: relative; }
+.screen { padding: 0 var(--sp-4); }
+
+/*
+  Режим свайпа.
+
+  Отсекает #viewport, едет #track — обязательно РАЗНЫЕ элементы. Повесив и то и
+  другое на один, получаешь область отсечения, которая едет вместе с содержимым:
+  соседняя панель стоит на left:100%, край уезжает вместе с ней, и показаться она
+  не может никогда. Снаружи это выглядит как смахивание в пустоту.
+
+  Высота на время жеста фиксируется по видимой области, а текущая панель
+  приподнимается на величину прокрутки — иначе экран прыгнул бы к началу ровно
+  в тот момент, когда панели выходят из потока.
+*/
+#viewport.swiping { overflow: hidden; }
+
+#viewport.swiping #track {
+  position: relative; height: 100%;
+  will-change: transform;
+}
+
+#viewport.swiping .screen {
+  position: absolute; top: 0; left: 0; width: 100%;
+}
+#viewport.swiping .screen.peek-next { left: 100%; }
+#viewport.swiping .screen.peek-prev { left: -100%; }
+
+/*
+  У дорожки нет CSS-перехода вовсе: и ведение, и доводка идут покадрово из swipe.js.
+  Переход здесь означал бы старт с нулевой скорости — ровно то, что ощущалось
+  как жёсткий магнит после отпускания.
+*/
+
+/* Когда панель видна, низ страницы отбивается на её высоту. */
+body.with-nav {
+  padding-bottom: calc(var(--nav-h) + var(--sp-4) + env(safe-area-inset-bottom));
+}
+
+/* ---------------------------------------------------------------- типографика */
+
+/*
+  Три уровня, которых не было: overline для подписей, крупные цифры и заголовки
+  с поджатым трекингом. Иерархию держит размер, а не цвет и не рамка.
+*/
+
+h1 {
+  font-size: 26px; font-weight: 600; line-height: 1.15;
+  letter-spacing: -.015em; margin: var(--sp-1) 0 var(--sp-2);
+}
+
+h2 { font-size: 20px; font-weight: 600; line-height: 1.25; margin: 0 0 var(--sp-1); }
+
+/* Подпись под заголовком экрана. Была инлайновым margin:-8px 0 16px 4px в пяти местах. */
+.subtitle {
+  color: var(--on-surface-variant); font-size: 14px;
+  margin: 0 0 var(--sp-4);
+}
+
+/* Надзаголовок: «сегодня», «записано», «план». */
+.section-title,
+.overline {
+  font-size: 11px; font-weight: 600; line-height: 1.3;
+  text-transform: uppercase; letter-spacing: .09em;
+  color: var(--outline);
+  margin: var(--sp-5) 0 var(--sp-2);
+}
+.section-title:first-child, .overline.flush { margin-top: 0; }
+
+.hint  { color: var(--on-surface-variant); font-size: 14px; }
+.muted { color: var(--on-surface-variant); }
+
+/* Первая строка блока — имя упражнения, название дня: заметнее текста, тише h2. */
+.lead { font-size: 16px; font-weight: 500; }
+
+/* Цифры: моноширинные позиции, иначе счётчик дёргается на каждом тике. */
+.num { font-variant-numeric: tabular-nums; }
+
+.display {
+  font-size: 40px; font-weight: 600; line-height: 1;
+  letter-spacing: -.025em; font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  text-align: center; color: var(--on-surface-variant);
+  padding: var(--sp-8) var(--sp-4);
+}
+
 /* ---------------------------------------------------------------- каркас */
 
 .card {
-  background: var(--card);
-  border-radius: var(--radius);
-  padding: 16px;
-  margin-bottom: 12px;
+  background: var(--surface-container-low);
+  border-radius: var(--shape-lg);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-3);
 }
 
-.card.tight { padding: 12px 16px; }
+.card.tight { padding: var(--sp-3) var(--sp-4); }
+
+/* Акцентная карточка: то единственное, ради чего экран открыли. */
+.card.accent {
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+}
+.card.accent .hint, .card.accent .overline { color: var(--on-primary-container); opacity: .75; }
+
+/*
+  Список на разделителях вместо стопки карточек: у плоского перечня нет своей
+  иерархии, и обводить каждую строку — значит спорить с этим.
+*/
+.rows > * { border-bottom: 1px solid var(--outline-variant); }
+.rows > *:last-child { border-bottom: 0; }
+
+/*
+  Карточка дня на главной: ближайшее упражнение и остальные — один блок.
+
+  Раньше «следующее» жило в отдельной акцентной карточке, а список остальных — под
+  ней; связь «это всё упражнения сегодня» терялась, а вторая зелёная поверхность
+  спорила с зелёной кнопкой. Теперь заливка одна, а выделено ровно одно —
+  первая строка.
+*/
+.session {
+  background: var(--surface-container-low);
+  border-radius: var(--shape-lg);
+  padding: 0 var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+.ex-line {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--outline-variant);
+}
+.ex-line:last-child { border-bottom: 0; }
+.ex-line .name { font-size: 15px; }
+
+/* Значок круговой — приглушённый маркер, а не акцент; колонка держит отступ, даже
+   когда упражнение не круговое, чтобы имена стояли ровно. */
+.ex-line .mark {
+  flex: 0 0 16px; display: flex; align-items: center; justify-content: center;
+  color: var(--outline);
+}
+.ex-line .num.sets {
+  font-size: 15px; color: var(--on-surface-variant); font-weight: 400;
+}
+
+/* Первая строка — ближайшее упражнение: единственное выделение в карточке. */
+.ex-line.next .chip {
+  flex: 0 0 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--primary-container); color: var(--on-primary-container);
+}
+.ex-line.next .lead { display: block; }
+.ex-line.next .num.sets { color: var(--on-surface); font-weight: 600; }
+.overline.tiny { display: block; font-size: 10px; margin: 0; }
+
+/*
+  Пропущенный день — тихая строка с текстовым действием, а не карточка с кнопкой.
+  Второстепенный сценарий не должен весить как главный CTA.
+*/
+.missed-row {
+  display: flex; align-items: center; gap: var(--sp-3);
+  width: 100%; text-align: left; background: transparent;
+  padding: var(--sp-2) var(--sp-1);
+  color: var(--on-surface-variant); font-size: 14px;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.missed-row:active { opacity: .6; }
+.missed-row .ic { flex: 0 0 18px; display: flex; color: var(--outline); }
+.missed-row .grow { flex: 1; min-width: 0; }
+.missed-row b { font-weight: 500; color: var(--on-surface); }
+.missed-row .do { color: var(--primary); font-weight: 500; white-space: nowrap; }
+
+/*
+  Недельная цель и серия — мотивационная сводка внизу главной. Кольцо перекликается
+  с кольцом таймера отдыха, чтобы язык приложения оставался однородным.
+*/
+.week-card {
+  display: flex; align-items: center; gap: var(--sp-4);
+  background: var(--surface-container-low);
+  border-radius: var(--shape-lg);
+  padding: var(--sp-4);
+}
+.week-ring { position: relative; flex: 0 0 54px; width: 54px; height: 54px; }
+.week-ring svg { transform: rotate(-90deg); display: block; }
+.week-ring circle { fill: none; stroke-width: 6; }
+.week-ring .bg { stroke: var(--outline-variant); }
+.week-ring .fg {
+  stroke: var(--primary); stroke-linecap: round;
+  transition: stroke-dashoffset .4s var(--ease);
+}
+.week-ring .label {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 600; color: var(--on-surface);
+  font-variant-numeric: tabular-nums;
+}
+.week-ring .label svg { color: var(--primary); }
+
+/* Серия недель — тихой строкой; при закрытой цели уходит в акцент (награда). */
+.streak {
+  display: flex; align-items: center; gap: 5px;
+  margin-top: 5px; font-size: 13px; color: var(--on-surface-variant);
+}
+.streak svg { color: var(--outline); flex: 0 0 auto; }
+.streak.on, .streak.on svg { color: var(--primary); }
+.streak.on { font-weight: 500; }
 
 .center-screen {
   display: flex; align-items: center; justify-content: center;
   min-height: 60vh;
 }
 
-.section-title {
-  font-size: 13px; color: var(--hint); text-transform: uppercase;
-  letter-spacing: .05em; margin: 20px 4px 8px;
-}
-
-h1 { font-size: 24px; font-weight: 800; margin: 4px 0 16px; }
-h2 { font-size: 19px; font-weight: 700; margin: 0 0 4px; }
-
-.hint  { color: var(--hint); font-size: 14px; }
-.muted { color: var(--hint); }
-.empty { text-align: center; color: var(--hint); padding: 32px 16px; }
-
 .row {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
 }
-.row + .row { margin-top: 12px; }
+.row + .row { margin-top: var(--sp-3); }
+.row.start { justify-content: flex-start; }
+
+.grow { flex: 1; min-width: 0; }
+.center { text-align: center; }
+
+/* Вертикальные отступы — вместо инлайновых style="margin-top:…". */
+.mt-1 { margin-top: var(--sp-1); }
+.mt-2 { margin-top: var(--sp-2); }
+.mt-3 { margin-top: var(--sp-3); }
+.mt-4 { margin-top: var(--sp-4); }
+.mt-5 { margin-top: var(--sp-5); }
 
 .spinner {
   width: 28px; height: 28px; border-radius: 50%;
-  border: 3px solid var(--card); border-top-color: var(--accent);
+  border: 3px solid var(--surface-container-high); border-top-color: var(--primary);
   animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------------------------------------------------------------- кнопки */
 
-button { font: inherit; border: 0; cursor: pointer; }
+button { font: inherit; border: 0; cursor: pointer; color: inherit; }
 
+/* M3 filled button: заливка primary, форма — стадион. */
 .btn {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  width: 100%; padding: 15px; border-radius: 14px;
-  background: var(--accent); color: var(--on-accent);
-  font-size: 16px; font-weight: 600;
-  transition: transform .06s, opacity .15s;
+  display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  width: 100%; padding: 15px var(--sp-6);
+  border-radius: var(--shape-full);
+  background: var(--primary); color: var(--on-primary);
+  font-size: 15px; font-weight: 500; letter-spacing: .01em;
+  transition: transform var(--dur-fast) var(--ease), opacity var(--dur-base);
 }
-.btn:active { transform: scale(.985); }
-.btn:disabled { opacity: .5; }
+.btn:active { transform: scale(.98); }
+.btn:disabled { opacity: .38; }
 
-.btn.secondary { background: var(--card); color: var(--text); }
-.btn.ghost     { background: transparent; color: var(--link); }
-.btn.danger    { background: transparent; color: var(--danger); }
-.btn.small     { padding: 10px 14px; font-size: 14px; width: auto; }
+/* Тональная: для действий рядом с главным. */
+.btn.secondary {
+  background: var(--secondary-container); color: var(--on-secondary-container);
+}
 
-/* Ряды-ссылки: главное меню, список программ, история. */
+/*
+  Контурная: тише тональной, но всё ещё кнопка.
+
+  Подпись НЕЙТРАЛЬНАЯ, а не primary, хотя M3 по умолчанию красит её в акцент.
+  Причина местная: главное действие в этом приложении почти всегда живёт
+  в MainButton Telegram, то есть в залитой зелёной кнопке внизу экрана, — и
+  контурная кнопка с зелёной подписью вставала рядом вторым призывом того же
+  цвета. На экране подхода это было особенно неверно: «Пропустить подход»
+  жмут раз в тридцать подходов, а весило оно как «Записать подход».
+  Насыщенный primary остаётся ровно на одной кнопке экрана.
+*/
+.btn.outlined {
+  background: transparent; color: var(--on-surface);
+  border: 1px solid var(--outline);
+}
+
+/* Текстовая: третьестепенное. */
+.btn.ghost { background: transparent; color: var(--primary); }
+
+.btn.danger { background: transparent; color: var(--error); }
+
+/*
+  Приглушённая кнопка — для «Закончить тренировку».
+
+  Раньше она была .danger, то есть полноширинной красной целью прямо под степперами.
+  Красный означает «опасно», а закончить тренировку — нормальный успешный финал;
+  к тому же за тренировку эту кнопку жмут один раз против тридцати нажатий «Записать
+  подход», и весом на экране они были почти равны. Теперь это самый тихий элемент
+  экрана и стоит он последним. От случайного нажатия защищает подтверждение.
+
+  Ширина по содержимому, а не во всю строку: выглядела она текстом по центру,
+  а кликалась целиком, вместе с пустотой по краям, — цель вчетверо больше видимой.
+*/
+.btn.quiet {
+  width: fit-content; margin-left: auto; margin-right: auto;
+  background: transparent; color: var(--on-surface-variant); font-weight: 400;
+}
+
+.btn.small { padding: 10px var(--sp-4); font-size: 14px; width: auto; }
+
+/* Ряд-ссылка. Без карточки: разделителя достаточно, чтобы отделить строки. */
 .list-item {
-  display: flex; align-items: center; gap: 12px;
-  width: 100%; padding: 14px 16px; text-align: left;
-  background: var(--card); color: var(--text);
-  border-radius: var(--radius); margin-bottom: 8px;
-  transition: transform .06s;
+  display: flex; align-items: center; gap: var(--sp-3);
+  width: 100%; padding: var(--sp-3) var(--sp-1); text-align: left;
+  background: transparent; color: var(--on-surface);
+  border-bottom: 1px solid var(--outline-variant);
+  transition: background var(--dur-fast) var(--ease);
 }
-.list-item:active { transform: scale(.99); }
+.list-item:last-of-type { border-bottom: 0; }
+.list-item:active { background: var(--surface-container); }
 .list-item .grow { flex: 1; min-width: 0; }
-.list-item .title { font-weight: 600; }
-.list-item .sub   { font-size: 13px; color: var(--hint); }
-.list-item .chev  { color: var(--hint); font-size: 20px; }
-.list-item .icon  { font-size: 22px; }
+.list-item .title { font-weight: 500; font-size: 15px; }
+.list-item .sub   { font-size: 13px; color: var(--on-surface-variant); }
+.list-item .chev  { color: var(--outline); font-size: 20px; }
+
+/* Вариант в карточке — для списков, где строка кликается целиком. */
+.list-item.boxed {
+  background: var(--surface-container-low); border-bottom: 0;
+  border-radius: var(--shape-lg); padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-2);
+}
+
+/*
+  Строка упражнения в дне. Раньше под каждым упражнением висел ряд из трёх кнопок
+  (↑ ↓ Убрать) — при пяти упражнениях это пятнадцать кнопок на экране. «Убрать» отсюда
+  убрано как дубль: оно и так есть в настройках упражнения, куда ведёт тап по названию.
+*/
+.ex-row {
+  display: flex; align-items: center; gap: var(--sp-1);
+  border-bottom: 1px solid var(--outline-variant);
+}
+.ex-row:last-of-type { border-bottom: 0; }
+
+.ex-main {
+  flex: 1; min-width: 0; text-align: left;
+  background: transparent; padding: var(--sp-3) var(--sp-1);
+}
+.ex-main .title { font-weight: 500; font-size: 15px; }
+.ex-main .sub   { font-size: 13px; color: var(--on-surface-variant); }
+
+.icon-btn {
+  flex: 0 0 36px; height: 36px; border-radius: var(--shape-sm);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-container-high); color: var(--on-surface-variant);
+  font-size: 16px;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.icon-btn:active { transform: scale(.92); }
+.icon-btn:disabled { opacity: .3; }
 
 .pill {
-  display: inline-block; font-size: 11px; font-weight: 600;
-  padding: 3px 9px; border-radius: 99px;
-  background: var(--bg); color: var(--hint);
+  display: inline-block; font-size: 11px; font-weight: 600; line-height: 1.4;
+  padding: 3px 9px; border-radius: var(--shape-sm);
+  background: var(--surface-container-high); color: var(--on-surface-variant);
 }
-.pill.on  { background: var(--up); color: #04150e; }
-.pill.ai  { background: var(--accent); color: var(--on-accent); }
+.pill.on { background: var(--primary-container); color: var(--on-primary-container); }
+.title + .pill, .title .pill { margin-left: var(--sp-1); }
 
 /* ---------------------------------------------------------------- ввод */
 
-.stepper { display: flex; align-items: center; gap: 12px; }
+/*
+  Степпер: «−», число, «+».
+
+  Вес и повторения набраны ОДНИМ размером — это пара, а не иерархия. Раньше вес шёл
+  на 40px, а повторения через модификатор .compact на 28px, по мысли «вес решают,
+  повторения подтверждают». На экране это читалось как ошибка вёрстки: оба числа
+  вводятся, оба уходят одной кнопкой, и разный кегль сообщал несуществующую
+  подчинённость. Плюс 40 и 28 — не соседние ступени шкалы, между ними полторы.
+
+  Размер — тот же display-уровень, что у .display (40/600): своего кегля степпер
+  не заводит.
+*/
+.stepper { display: flex; align-items: center; gap: var(--sp-3); }
 .stepper button {
-  flex: 0 0 56px; height: 56px; border-radius: 14px;
-  background: var(--bg); color: var(--text);
-  font-size: 26px; font-weight: 600;
-  transition: transform .06s;
+  /* 52 ≥ 48: минимальная цель касания. Ниже опускаться нельзя даже ради компактности. */
+  flex: 0 0 52px; height: 52px; border-radius: var(--shape-md);
+  background: var(--surface-container-high); color: var(--on-surface-variant);
+  font-size: 24px; font-weight: 500;
+  transition: transform var(--dur-fast) var(--ease);
 }
-.stepper button:active { transform: scale(.9); }
+.stepper button:active { transform: scale(.92); }
 
-.stepper .value { flex: 1; }
-.stepper input {
-  width: 100%; text-align: center; border: 0; background: transparent;
-  color: var(--text); font-size: 40px; font-weight: 800;
-  font-variant-numeric: tabular-nums; -moz-appearance: textfield;
+/*
+  Подпись НАД числом, а не под ним.
+
+  Читают сверху вниз, поэтому «КГ» перед «30» отвечает на вопрос до того, как он
+  возник. Снизу подпись догоняла уже прочитанное число, и два одинаковых по размеру
+  степпера различались только ею — самым мелким текстом на экране.
+*/
+.stepper .value {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column-reverse;
 }
-.stepper input::-webkit-outer-spin-button,
-.stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.stepper .unit { text-align: center; font-size: 14px; color: var(--hint); }
 
-.delta { text-align: center; font-size: 13px; margin-top: 8px; min-height: 18px; }
+/*
+  Селектор нарочно из двух классов. У `.stepper input` та же специфичность, что у
+  общего `input[type="number"]` ниже по файлу, — и общее правило побеждало просто
+  потому, что идёт позже: поле получало рамку и подложку, «−» и «+» разъезжались
+  по краям, а число оказывалось в коробке посреди экрана.
+*/
+/*
+  Линия под числом — единственный признак того, что его можно ввести с клавиатуры,
+  а не только доклацать кнопками. Без неё «40» выглядело подписью: ни рамки,
+  ни подложки, ни курсора, — и путь от 40 к 60 занимал восемь нажатий «+2.5».
+  Это активная линия filled-поля M3: волосяная в покое, в акценте и вдвое толще
+  под фокусом (padding компенсирует толщину, чтобы число не дёргалось).
+*/
+.stepper .value input {
+  width: 100%; text-align: center; background: transparent;
+  border: 0; border-bottom: 1px solid var(--outline-variant);
+  padding: 0 0 3px; border-radius: 0;
+  color: var(--on-surface); font-size: 40px; font-weight: 600;
+  letter-spacing: -.025em; font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+}
+.stepper .value input:focus {
+  outline: 0; border: 0;
+  border-bottom: 2px solid var(--primary); padding-bottom: 2px;
+}
+.stepper .value input::-webkit-outer-spin-button,
+.stepper .value input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.stepper .unit {
+  text-align: center; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .08em;
+  color: var(--outline); margin-bottom: 2px;
+}
+
+/*
+  Кнопка с шагом на лице: «−2.5», «+1». Кегль ниже, чем у голого глифа, — иначе
+  число распирает кнопку и начинает спорить с главным числом посередине.
+*/
+.stepper button.step { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+
+/*
+  Уменьшённый вариант — только для форм настройки (сколько подходов и повторений
+  ставить упражнению в программе). Там число это параметр, а не то, ради чего
+  открыли экран, и тише основного оно по делу.
+
+  На экране подхода .compact не применяется: см. комментарий выше.
+  Кнопки — 48, а не 46: 46 было ниже минимальной цели касания.
+*/
+.stepper.compact .value input { font-size: 28px; }
+.stepper.compact button { flex: 0 0 48px; height: 48px; }
+
+.delta {
+  text-align: center; font-size: 13px; font-weight: 500;
+  margin-top: var(--sp-1); min-height: 18px;
+  color: var(--on-surface-variant);
+}
 .delta.up   { color: var(--up); }
 .delta.down { color: var(--down); }
 
 input[type="text"], input[type="number"], textarea, select {
-  width: 100%; padding: 13px 14px; border: 0; border-radius: 12px;
-  background: var(--bg); color: var(--text); font: inherit;
+  width: 100%; padding: 13px var(--sp-4);
+  border: 1px solid var(--outline-variant); border-radius: var(--shape-md);
+  background: var(--surface-container-low); color: var(--on-surface); font: inherit;
+  transition: border-color var(--dur-base) var(--ease);
+}
+input:focus, textarea:focus, select:focus {
+  outline: 0; border-color: var(--primary);
 }
 textarea { resize: vertical; min-height: 76px; }
-label { display: block; font-size: 13px; color: var(--hint); margin: 0 0 6px 2px; }
-.field { margin-bottom: 14px; }
 
-/* Переключатель — для «кругового» и «тихих пингов». */
-.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+label {
+  display: block; font-size: 13px; color: var(--on-surface-variant);
+  margin: 0 0 var(--sp-1) 2px;
+}
+.field { margin-bottom: var(--sp-4); }
+
+/* Отдых задаётся в секундах, но думают о нём в минутах — «2:30» стоит рядом с полем. */
+.field .secs {
+  flex: 0 0 52px; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Переключатель в собственной подложке — иначе он висит в воздухе посреди листа. */
+.switch-card {
+  background: var(--surface-container);
+  border-radius: var(--shape-md);
+  padding: var(--sp-3) var(--sp-4);
+}
+.switch-card label { margin: 0; }
+
+/* M3 switch: у выключенного трека есть обводка — иначе он теряется на фоне. */
+.switch { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
 .switch input { display: none; }
 .switch .track {
-  width: 50px; height: 30px; border-radius: 99px; background: var(--bg);
-  position: relative; transition: background .2s; flex: 0 0 50px;
+  width: 52px; height: 32px; border-radius: var(--shape-full);
+  background: var(--surface-container-highest);
+  border: 2px solid var(--outline);
+  position: relative; flex: 0 0 52px;
+  transition: background var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease);
 }
 .switch .track::after {
-  content: ""; position: absolute; top: 3px; left: 3px;
-  width: 24px; height: 24px; border-radius: 50%; background: var(--hint);
-  transition: transform .2s, background .2s;
+  content: ""; position: absolute; top: 5px; left: 5px;
+  width: 18px; height: 18px; border-radius: 50%; background: var(--outline);
+  transition: transform var(--dur-base) var(--ease), background var(--dur-base) var(--ease),
+              width var(--dur-base) var(--ease), height var(--dur-base) var(--ease),
+              top var(--dur-base) var(--ease), left var(--dur-base) var(--ease);
 }
-.switch input:checked + .track { background: var(--accent); }
-.switch input:checked + .track::after { transform: translateX(20px); background: #fff; }
+.switch input:checked + .track { background: var(--primary); border-color: var(--primary); }
+.switch input:checked + .track::after {
+  top: 3px; left: 3px; width: 22px; height: 22px;
+  transform: translateX(20px); background: var(--on-primary);
+}
 
 /* ---------------------------------------------------------------- тренировка */
 
-.exercise-name { font-size: 24px; font-weight: 800; margin: 6px 0 2px; }
-
-.progress {
-  height: 4px; border-radius: 99px; background: var(--bg); overflow: hidden; margin-top: 14px;
+.exercise-name {
+  font-size: 22px; font-weight: 600; line-height: 1.2;
+  letter-spacing: -.015em; margin: var(--sp-1) 0 0;
 }
-.progress > div { height: 100%; background: var(--accent); transition: width .3s; }
 
-/* Список записанных подходов — по нему же их и правят. */
+/*
+  Справка под названием упражнения — одной строкой, а не плиткой. Рекорд нужен
+  краем глаза; плитка давала ему вес полноценного блока и съедала экран, на
+  котором должны быть видны только два числа и кнопка.
+
+  «Прошлый раз» отсюда ушёл в таблицу подходов: степперы предзаполнены ровно
+  прошлым разом, поэтому наверху эта строка по построению повторяла оба числа,
+  набранные вчетверо крупнее в двадцати пикселях под ней.
+*/
+.meta {
+  margin-top: var(--sp-2); font-size: 13px; color: var(--on-surface-variant);
+}
+.meta b {
+  font-weight: 500; color: var(--on-surface); font-variant-numeric: tabular-nums;
+}
+
+/*
+  Подходы упражнения: сделанные, текущий и те, что впереди, — одним списком.
+
+  Строки нарисованы на все запланированные подходы сразу, а не только на
+  записанные. Так экран не начинается с пустоты в треть высоты, запись подхода
+  не двигает вёрстку под пальцем, и «подход 1 из 3» видно глазами, а не только
+  прочитав надпись.
+
+  Разметка та же, что у .plan-item ниже: колонка отметки, название, значение.
+  Два списка на одном экране обязаны выглядеть роднёй.
+*/
+.sets { margin-top: var(--sp-4); }
+.set-row {
+  display: flex; align-items: center; gap: var(--sp-3);
+  width: 100%; text-align: left; background: transparent;
+  padding: var(--sp-3) var(--sp-1); font-size: 14px;
+  color: var(--on-surface-variant);
+  border-bottom: 1px solid var(--outline-variant);
+  transition: background var(--dur-fast) var(--ease);
+}
+.set-row:last-child { border-bottom: 0; }
+.set-row .mark { flex: 0 0 18px; text-align: center; color: var(--outline); }
+.set-row .grow { flex: 1; min-width: 0; }
+.set-row .v { font-variant-numeric: tabular-nums; }
+button.set-row:active { background: var(--surface-container); }
+
+/* Записанное — единственное на строке, что набрано основным цветом. */
+.set-row.done .v { color: var(--on-surface); font-weight: 500; }
+
+/*
+  Пропущенный подход виден, но приглушён: место в тренировке он занимает,
+  результата за ним нет. Зачёркивать нечего — там и не было числа.
+*/
+.set-row.skipped .v { color: var(--outline); font-style: italic; }
+
+/*
+  Текущий подход помечен пилюлей в primary-container — тем же тональным приёмом,
+  каким выделено ближайшее упражнение на главной. Значения справа у него нет
+  намеренно: оно прямо сейчас набирается в степпере ниже.
+*/
+.set-row.now { color: var(--on-surface); font-weight: 500; }
+.set-row .was { color: var(--outline); }
+
+/*
+  План во время подхода свёрнут. Он нужен раз за тренировку — прикинуть, сколько
+  осталось, — а висел под каждым подходом и вытеснял вниз всё остальное.
+*/
+.fold { margin-top: var(--sp-5); }
+
+/*
+  Раскрывашка — РЯД-КОНТРОЛ, а не подпись к разделу.
+
+  Была набрана ровно как .section-title: 11 пикселей, капитель, цвет outline.
+  Это стиль подписи, поэтому «ПЛАН» и читался подписью — единственным признаком
+  нажимаемости оставалась стрелка того же кегля, а ничего похожего на цель
+  касания на строке не было вовсе. Попытка прижать стрелку к слову проблему
+  не решала: подпись со стрелкой — всё ещё подпись.
+
+  Теперь строка говорит о себе тремя вещами сразу, как принято в любом списке
+  настроек: рост в 48 пикселей (минимальная цель касания), текст 15/500 основным
+  цветом с пояснением справа, шеврон, который поворачивается на раскрытии.
+  Волосяные линии сверху и снизу отделяют её от текста вокруг — язык .list-item,
+  который в приложении уже везде.
+*/
+.fold > summary {
+  list-style: none; cursor: pointer;
+  display: flex; align-items: center; gap: var(--sp-3);
+  min-height: 48px; padding: var(--sp-2) var(--sp-1);
+  border-top: 1px solid var(--outline-variant);
+  border-bottom: 1px solid var(--outline-variant);
+  font-size: 15px; font-weight: 500; color: var(--on-surface);
+  transition: background var(--dur-fast) var(--ease);
+}
+.fold > summary:active { background: var(--surface-container); }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary .grow { flex: 1; min-width: 0; }
+.fold > summary .sub {
+  font-size: 13px; font-weight: 400; color: var(--on-surface-variant);
+}
+.fold > summary .chev {
+  flex: 0 0 20px; width: 20px; height: 20px; color: var(--on-surface-variant);
+  transition: transform var(--dur-base) var(--ease);
+}
+.fold[open] > summary .chev { transform: rotate(180deg); }
+
+/* Три числа профиля в ряд — это и есть содержимое раздела, а не подпись к нему. */
+.stats { display: flex; gap: var(--sp-2); }
+.stat {
+  flex: 1; min-width: 0; text-align: center;
+  background: var(--surface-container-low);
+  border-radius: var(--shape-md); padding: var(--sp-3) var(--sp-2);
+}
+.stat .v {
+  font-size: 19px; font-weight: 600;
+  letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+}
+.stat .k { font-size: 11px; color: var(--on-surface-variant); margin-top: 2px; }
+
+/* Строка «подход / результат» в истории профиля. */
 .set-chip {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 14px; border-radius: 12px; background: var(--bg);
-  margin-bottom: 6px; font-size: 15px;
+  padding: var(--sp-2) var(--sp-1); font-size: 14px;
+  border-bottom: 1px solid var(--outline-variant);
 }
-.set-chip .n { color: var(--hint); font-size: 13px; }
+.set-chip:last-child { border-bottom: 0; }
+.set-chip .n { color: var(--on-surface-variant); font-size: 13px; }
+.set-chip .v { font-variant-numeric: tabular-nums; }
 
 .plan-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 0; font-size: 14px; color: var(--hint);
-  border-bottom: 1px solid var(--bg);
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) 0; font-size: 14px; color: var(--on-surface-variant);
+  border-bottom: 1px solid var(--outline-variant);
 }
 .plan-item:last-child { border-bottom: 0; }
 .plan-item.done { opacity: .45; }
-.plan-item.now  { color: var(--text); font-weight: 600; }
-.plan-item .mark { width: 18px; text-align: center; }
+.plan-item.now  { color: var(--on-surface); font-weight: 500; }
+/* Отметка приглушена так же, как в таблице подходов: два списка на одном экране
+   должны выглядеть роднёй. Красить в акцент ещё и «·» будущего шага было прямо
+   неверно — насыщенный primary на экране остаётся у одной кнопки. */
+.plan-item .mark { width: 18px; text-align: center; color: var(--outline); }
 
 /* Отдых: кольцо обратного отсчёта. */
-.ring { width: 168px; height: 168px; margin: 4px auto 16px; position: relative; }
+.ring { width: 168px; height: 168px; margin: var(--sp-1) auto var(--sp-4); position: relative; }
 .ring svg { transform: rotate(-90deg); }
-.ring circle { fill: none; stroke-width: 10; stroke-linecap: round; }
-.ring .bg { stroke: var(--bg); }
-.ring .fg { stroke: var(--accent); transition: stroke-dashoffset 1s linear; }
+.ring circle { fill: none; stroke-width: 8; stroke-linecap: round; }
+.ring .bg { stroke: var(--outline-variant); }
+.ring .fg { stroke: var(--primary); transition: stroke-dashoffset 1s linear; }
 .ring .clock {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-size: 36px; font-weight: 800; font-variant-numeric: tabular-nums;
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 38px; font-weight: 600; letter-spacing: -.025em;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Плашка отдыха поверх остальных экранов. */
 #rest-bar {
-  position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 50;
-  display: flex; align-items: center; gap: 12px;
-  padding: 12px 16px; border-radius: 14px;
-  background: var(--accent); color: var(--on-accent);
-  box-shadow: 0 8px 24px rgba(0,0,0,.28);
+  position: fixed; z-index: 50;
+  left: var(--sp-4); right: var(--sp-4);
+  bottom: calc(var(--sp-4) + env(safe-area-inset-bottom));
+}
+
+/* Пока панель навигации на экране, плашка отдыха встаёт над ней, а не под неё. */
+body.with-nav #rest-bar {
+  bottom: calc(var(--nav-h) + var(--sp-2) + env(safe-area-inset-bottom));
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4); border-radius: var(--shape-lg);
+  background: var(--primary-container); color: var(--on-primary-container);
 }
 #rest-bar .grow { flex: 1; }
-#rest-bar .time { font-weight: 800; font-variant-numeric: tabular-nums; }
+#rest-bar .time { font-weight: 600; font-variant-numeric: tabular-nums; }
+#rest-bar .next { font-size: 13px; opacity: .8; }
 #rest-bar button {
-  background: rgba(255,255,255,.22); color: var(--on-accent);
-  padding: 8px 12px; border-radius: 10px; font-size: 14px; font-weight: 600;
+  background: var(--on-primary-container); color: var(--primary-container);
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--shape-full);
+  font-size: 13px; font-weight: 500;
 }
 
 /* ---------------------------------------------------------------- график */
 
-.chart { width: 100%; height: 180px; display: block; }
-.chart .line  { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; }
-.chart .area  { fill: var(--accent); opacity: .12; }
-.chart .dot   { fill: var(--accent); }
-.chart .grid  { stroke: var(--hint); opacity: .15; stroke-width: 1; }
-.chart .label { fill: var(--hint); font-size: 10px; }
+.chart { width: 100%; height: auto; display: block; margin-bottom: var(--sp-2); }
+.chart .line  { fill: none; stroke: var(--primary); stroke-width: 2.5; stroke-linejoin: round; }
+.chart .area  { fill: var(--primary); opacity: .12; }
+.chart .dot   { fill: var(--primary); }
+.chart .grid  { stroke: var(--outline-variant); stroke-width: 1; }
+.chart .label { fill: var(--on-surface-variant); font-size: 9px; }
+
+/* Вторая метрика на своём экране — другим цветом, а не тем же самым. */
+.chart.alt .line { stroke: var(--chart-2); }
+.chart.alt .area { fill: var(--chart-2); }
+.chart.alt .dot  { fill: var(--chart-2); }
 
 /* ---------------------------------------------------------------- диалог */
 
 .sheet-backdrop {
   position: fixed; inset: 0; z-index: 100;
-  background: rgba(0,0,0,.5);
+  background: var(--scrim);
   display: flex; align-items: flex-end;
 }
 .sheet {
   width: 100%; max-height: 88vh; overflow-y: auto;
-  background: var(--card);
-  border-radius: 20px 20px 0 0; padding: 20px 16px 28px;
-  animation: rise .22s ease-out;
+  background: var(--surface-container-low);
+  border-radius: var(--shape-xl) var(--shape-xl) 0 0;
+  padding: var(--sp-5) var(--sp-4) calc(var(--sp-6) + env(safe-area-inset-bottom));
+  animation: rise .22s var(--ease);
 }
 @keyframes rise { from { transform: translateY(24px); } }
-.sheet h2 { margin-bottom: 14px; }
+
+/* Ручка сверху: показывает, что лист тянется и закрывается. */
+.sheet::before {
+  content: ""; display: block;
+  width: 32px; height: 4px; margin: 0 auto var(--sp-4);
+  border-radius: var(--shape-full); background: var(--outline-variant);
+}
+.sheet h2 { margin-bottom: var(--sp-3); }
+
+
+/* ---------------------------------------------------------------- навигация */
+
+/*
+  Нижняя панель — Material 3 navigation bar.
+  Раньше между разделами ходили только через главный экран: из профиля в расписание
+  надо было вернуться назад и ткнуть в ряд-ссылку. Плюс эргономика: верх экрана
+  одной рукой не достаётся, а переключение разделов — самое частое действие после
+  записи подхода.
+
+  На экране тренировки панель скрыта: там внизу живёт MainButton Telegram, и две
+  полосы друг над другом отняли бы у подхода треть экрана.
+*/
+.nav {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  display: flex;
+  background: var(--surface-container);
+  border-top: 1px solid var(--outline-variant);
+  padding: var(--sp-2) 0 calc(var(--sp-2) + env(safe-area-inset-bottom));
+  --nav-i: 0;
+}
+
+/*
+  Скользящий пузырёк активного раздела.
+
+  Раньше подложка была на самой кнопке: она умела только перекраситься, и переход
+  между разделами читался как «здесь погасло, там зажглось». Отдельный элемент
+  ЕДЕТ — а во время свайпа ещё и тянется за пальцем, связывая жест с результатом.
+
+  Ширина колонки — ровно доля панели на один раздел, поэтому позиция это просто
+  номер раздела: никаких измерений кнопок и пересчётов на resize. Число разделов
+  приезжает из разметки через --nav-n; раньше здесь стояло захардкоженное 25%,
+  и удаление одной кнопки разъехалось бы с пузырьком.
+*/
+.nav-bubble {
+  position: absolute; top: var(--sp-2); left: 0;
+  width: calc(100% / var(--nav-n, 4)); height: 32px; pointer-events: none;
+  transform: translate3d(calc(var(--nav-i) * 100%), 0, 0);
+}
+.nav-bubble::before {
+  content: ""; position: absolute; top: 0; left: 50%;
+  width: 56px; height: 32px; margin-left: -28px;
+  border-radius: var(--shape-full);
+  background: var(--primary-container);
+}
+
+/* Пока идёт свайп, пузырёк обязан идти за пальцем без сглаживания. */
+.nav.dragging .nav-bubble { transition: none; }
+
+.nav button {
+  flex: 1; min-width: 0;
+  position: relative; z-index: 1;   /* поверх пузырька, иначе он закроет иконку */
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: transparent; color: var(--on-surface-variant);
+  font-size: 11px; line-height: 1.2; padding: 0;
+}
+
+.nav .ind {
+  display: flex; align-items: center; justify-content: center;
+  width: 56px; height: 32px;
+  transition: color var(--dur-base) var(--ease);
+}
+.nav svg { width: 22px; height: 22px; }
+
+.nav button.on { color: var(--on-surface); font-weight: 600; }
+.nav button.on .ind { color: var(--on-primary-container); }
+
+/* ---------------------------------------------------------------- календарь активности */
+
+/*
+  «Квадратики», как на GitHub: колонка — неделя, строка — день недели.
+  Ячейки квадратные через aspect-ratio, ширина колонки тянется под экран, поэтому
+  карта одинаково ложится и на узкий телефон, и на планшет.
+*/
+.heat-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
+}
+.heat-grid span {
+  aspect-ratio: 1; border-radius: 2px; background: var(--heat-0);
+}
+.heat-grid span[data-l="1"] { background: var(--heat-1); }
+.heat-grid span[data-l="2"] { background: var(--heat-2); }
+.heat-grid span[data-l="3"] { background: var(--heat-3); }
+.heat-grid span[data-l="4"] { background: var(--heat-4); }
+
+/* Сегодняшняя клетка обведена — иначе в пустой день её не найти. */
+.heat-grid span.today { box-shadow: 0 0 0 1.5px var(--on-surface); }
+
+.heat-months {
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px;
+  font-size: 9px; color: var(--outline); margin-bottom: var(--sp-1);
+}
+.heat-months span { white-space: nowrap; overflow: visible; }
+
+.heat-legend {
+  display: flex; align-items: center; justify-content: flex-end; gap: 3px;
+  font-size: 11px; color: var(--outline); margin-top: var(--sp-2);
+}
+.heat-legend i {
+  width: 10px; height: 10px; border-radius: 2px; background: var(--heat-0);
+}
+.heat-legend i[data-l="1"] { background: var(--heat-1); }
+.heat-legend i[data-l="2"] { background: var(--heat-2); }
+.heat-legend i[data-l="3"] { background: var(--heat-3); }
+.heat-legend i[data-l="4"] { background: var(--heat-4); }
+
+/* ---------------------------------------------------------------- переходы */
+
+/*
+  Появление экрана анимирует ui.js через Web Animations API — здесь правил нет
+  намеренно. Классовый вариант требовал перезапуска анимации через чтение
+  offsetWidth, то есть принудительного пересчёта раскладки сразу после замены
+  DOM: самый дорогой момент кадра, и первые кадры движения терялись.
+
+  Кривая и длительности живут в MOTION в ui.js — рядом с кодом, который решает,
+  какое движение уместно для конкретного перехода.
+*/
+
+/* Пузырёк раздела едет по той же кривой и почти столько же, сколько сам экран:
+   разнобой длительностей читается как несогласованность, а не как акцент. */
+/* Переход нужен для обычного НАЖАТИЯ по вкладке. Во время жеста он снимается
+   классом .dragging — там позицию задаёт пружина, кадр за кадром. */
+.nav-bubble { transition: transform .28s cubic-bezier(.05, .7, .1, 1); }
+
+/* Затемнение под шторкой всплывает вместе с ней, а не появляется рывком. */
+.sheet-backdrop { animation: fade-in .2s var(--ease) both; }
+@keyframes fade-in { from { opacity: 0; } }
+
+/*
+  Уважение к системной настройке «уменьшить движение». Задержку гасим наравне
+  с длительностью: анимация в .01ms, но с delay .15s всё равно заставила бы ждать.
+*/
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: .01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
