@@ -904,12 +904,55 @@ async def test_weekly_progress_reports_goal_and_done(client: httpx.AsyncClient):
     filled = await _program_with_days(client, "Неделя", [0, 2, 4])
 
     boot = (await client.get("/api/bootstrap", headers=TZ_HEADERS)).json()
-    assert boot["week"] == {"done": 0, "goal": 3, "streak": 0}
+    assert boot["week"]["done"] == 0
+    assert boot["week"]["goal"] == 3
+    assert boot["week"]["streak"] == 0
 
     await _train(client, filled[0]["id"])
     boot = (await client.get("/api/bootstrap", headers=TZ_HEADERS)).json()
     assert boot["week"]["done"] == 1
     assert boot["week"]["streak"] == 1          # эта неделя уже засчитана в серию
+
+
+@pytest.mark.anyio
+async def test_weekly_left_counts_only_training_days_still_ahead(client: httpx.AsyncClient):
+    """
+    `left` — сколько тренировочных дней программы на этой неделе ещё впереди.
+
+    Из него экран берёт потолок для «ещё N тренировок»: иначе в пятницу с нулём
+    сделанных он просил бы четыре тренировки за два оставшихся дня.
+    """
+    filled = await _program_with_days(client, "Впереди", [0])   # тренировочный день — сегодня
+
+    boot = (await client.get("/api/bootstrap", headers=TZ_HEADERS)).json()
+    assert boot["week"]["left"] == 1            # сегодня ещё не отработан — он и есть остаток
+
+    await _train(client, filled[0]["id"])
+    boot = (await client.get("/api/bootstrap", headers=TZ_HEADERS)).json()
+    assert boot["week"]["left"] == 0            # отработанный сегодня в остаток не идёт
+    assert boot["week"]["goal"] == 1            # а цель недели от этого не меняется
+
+
+@pytest.mark.anyio
+async def test_weekly_left_ignores_days_already_behind(client: httpx.AsyncClient):
+    """
+    Прошедшие дни недели в остаток не попадают.
+
+    Считаем по ДНЮ НЕДЕЛИ, а не по дате: вчерашний день недели остаётся впереди
+    ровно в одном случае — сегодня понедельник, и «вчера» это воскресенье, до
+    которого ещё шесть суток текущей недели.
+    """
+    from zoneinfo import ZoneInfo
+
+    from services.clock import today_in
+
+    await _program_with_days(client, "Позади", [1])             # тренировочный день — вчерашний
+
+    today = today_in(ZoneInfo(TZ_NAME))
+    yesterday_ahead = (today - timedelta(days=1)).weekday() > today.weekday()
+
+    boot = (await client.get("/api/bootstrap", headers=TZ_HEADERS)).json()
+    assert boot["week"]["left"] == (1 if yesterday_ahead else 0)
 
 
 @pytest.mark.anyio

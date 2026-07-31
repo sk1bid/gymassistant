@@ -171,21 +171,36 @@ function todayBlock(data) {
  * серия — тихой строкой с огоньком и только начиная с двух недель: «серия: 1 неделя»
  * бессмысленна, а отсутствие серии не повод укорять. Когда цель закрыта, кольцо
  * заполнено с галочкой, а серия уходит в акцент — это момент награды.
+ *
+ * Просить можно только выполнимое. Строка «ещё N тренировок» раньше была разностью
+ * цели и сделанного, поэтому в пятницу с нулём отработанных дней требовала четырёх
+ * тренировок за два оставшихся дня. Теперь потолок — `week.left`, число ещё не
+ * прошедших тренировочных дней программы: цель в кольце остаётся честной (0/4),
+ * а просьба сходится с календарём. Когда таких дней не осталось вовсе, экран
+ * перестаёт требовать и просто закрывает неделю.
+ *
+ * Грейс серии показан словами. «0/4» рядом с «серия: 6 недель» читалось как
+ * противоречие — на деле серия держится, пока неделя не кончилась, и лучше сказать
+ * об этом прямо: пропущенная неделя обнулит цепочку, и это единственный момент,
+ * когда об этом уместно напомнить.
  */
 function weeklyCard(week) {
   if (!week || !week.goal) return '';
 
   const met = week.done >= week.goal;
-  const left = Math.max(0, week.goal - week.done);
+  const short = Math.max(0, week.goal - week.done);
+  const ahead = Number.isInteger(week.left) ? week.left : short;
+  const ask = Math.min(short, ahead);
 
   const R = 23;
   const C = 2 * Math.PI * R;
   const done = Math.min(week.done, week.goal);
   const offset = met ? 0 : C * (1 - done / week.goal);
 
+  const grace = week.done === 0 ? ' · держится до конца недели' : '';
   const streak = week.streak >= 2
     ? `<div class="streak${met ? ' on' : ''}">${ICON.flame}
-         Серия: ${plural(week.streak, 'неделя', 'недели', 'недель')}</div>`
+         Серия: ${plural(week.streak, 'неделя', 'недели', 'недель')}${grace}</div>`
     : (met ? '' : '<div class="hint mt-1">до цели недели</div>');
 
   return `
@@ -200,7 +215,9 @@ function weeklyCard(week) {
       </div>
       <div class="grow">
         <div class="overline flush">эта неделя</div>
-        <div class="lead">${met ? 'Цель недели закрыта' : `Ещё ${plural(left, 'тренировка', 'тренировки', 'тренировок')}`}</div>
+        <div class="lead">${met ? 'Цель недели закрыта'
+          : ask > 0 ? `Ещё ${plural(ask, 'тренировка', 'тренировки', 'тренировок')}`
+          : 'План недели позади'}</div>
         ${streak}
       </div>
     </div>

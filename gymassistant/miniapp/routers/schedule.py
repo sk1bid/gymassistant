@@ -96,7 +96,7 @@ async def missed_day(session: Session, user, tz, days: list[dict]) -> dict | Non
     return None
 
 
-async def weekly_progress(session: Session, user, tz: ZoneInfo, goal: int) -> dict:
+async def weekly_progress(session: Session, user, tz: ZoneInfo, days: list[dict]) -> dict:
     """
     Прогресс недели и серия — мотивационная сводка для главного экрана.
 
@@ -104,10 +104,19 @@ async def weekly_progress(session: Session, user, tz: ZoneInfo, goal: int) -> di
     тренировочными; «цель» — сколько тренировочных дней в программе. Серия — сколько
     недель подряд была хотя бы одна тренировка.
 
+    `left` — сколько тренировочных дней ПРОГРАММЫ на этой неделе ещё впереди
+    (сегодняшний считается, пока не отработан). Без него экран обещал невозможное:
+    в пятницу при цели 4 и нуле сделанных он писал «ещё 4 тренировки», хотя до
+    воскресенья таких дней в программе оставалось разве что один. Разница между
+    «сколько не хватает до цели» и «сколько ещё физически влезет» — и есть повод
+    считать это на сервере, а не вычитать на клиенте.
+
     Серия считается мягко: текущая неделя не рвёт её, пока не кончилась. Если на этой
     неделе тренировок ещё нет, отсчёт начинается с прошлой недели (грейс) — иначе
     серия обнулялась бы каждый понедельник, а пропуск дня в зале бывает по делу
     (болезнь, разгрузка), и наказывать за него сбросом цепочки — демотивирует.
+    Так же устроены недельные серии у Apple Fitness+ и цель «N дней в неделю»
+    у Fitbit: неделя календарная, Пн→Вс, а не скользящее окно.
 
     Дата тренировки хранится в naive-UTC, а неделя раскладывается по КАЛЕНДАРЮ
     пользователя: тренировка в 6 утра по Новосибирску — это 23:00 UTC накануне,
@@ -122,7 +131,20 @@ async def weekly_progress(session: Session, user, tz: ZoneInfo, goal: int) -> di
 
     today = today_in(tz)
     week_start = today - timedelta(days=today.weekday())
-    done = sum(1 for day in trained if week_start <= day <= today)
+    this_week = {day for day in trained if week_start <= day <= today}
+
+    # Дни недели программы, в которых есть упражнения. Имя дня сверяем нормализованным:
+    # в базе оно лежит как ввёл пользователь, регистр и пробелы бывают любыми.
+    order = {name.lower(): index for index, name in enumerate(WEEK_DAYS_RU)}
+    planned = {
+        order[day["day_of_week"].strip().lower()]
+        for day in days
+        if day["exercises"] and day["day_of_week"].strip().lower() in order
+    }
+
+    left = sum(1 for weekday in planned if weekday > today.weekday())
+    if today.weekday() in planned and today not in this_week:
+        left += 1
 
     weeks_with = {day - timedelta(days=day.weekday()) for day in trained}
     anchor = week_start if week_start in weeks_with else week_start - timedelta(days=7)
@@ -131,7 +153,7 @@ async def weekly_progress(session: Session, user, tz: ZoneInfo, goal: int) -> di
         streak += 1
         anchor -= timedelta(days=7)
 
-    return {"done": done, "goal": goal, "streak": streak}
+    return {"done": len(this_week), "goal": len(planned), "streak": streak, "left": left}
 
 
 @router.get("/bootstrap")
@@ -152,8 +174,7 @@ async def bootstrap(user: CurrentUser, session: Session, tz: ClientTz):
         days = await week(session, user.actual_program_id)
         today = next((d for d in days if d["day_of_week"].strip().lower() == today_name.lower()), None)
         missed = await missed_day(session, user, tz, days)
-        goal = sum(1 for day in days if day["exercises"])
-        week_progress = await weekly_progress(session, user, tz, goal)
+        week_progress = await weekly_progress(session, user, tz, days)
 
     return {
         "ok": True,
