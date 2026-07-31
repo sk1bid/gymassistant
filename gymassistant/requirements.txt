@@ -5,7 +5,6 @@
 # сервиса свой список:
 #   requirements.txt           — бот
 #   requirements-miniapp.txt   — Mini App
-#   press_api/requirements.txt — LSTM-сервис (вот там PyTorch и живёт)
 #
 # Общий у них только слой данных (database/) — его зависимости продублированы.
 

@@ -81,16 +81,6 @@ jobs:
           cache-from: type=registry,ref=${{ env.REPO }}:bot-buildcache
           cache-to: type=registry,ref=${{ env.REPO }}:bot-buildcache,mode=max
 
-      - name: Build and push PRESS-API
-        uses: docker/build-push-action@v5
-        with:
-          context: gymassistant/
-          file: gymassistant/press_api/Dockerfile
-          push: true
-          tags: ${{ env.REPO }}:api-${{ env.TAG }},${{ env.REPO }}:api-${{ env.BASE_TAG }}
-          cache-from: type=registry,ref=${{ env.REPO }}:api-buildcache
-          cache-to: type=registry,ref=${{ env.REPO }}:api-buildcache,mode=max
-
       - name: Build and push MINIAPP
         uses: docker/build-push-action@v5
         with:
@@ -135,17 +125,13 @@ jobs:
 
             # Deploy Bot with specific tag
             kubectl set image deploy/gym-bot aiogram-bot=$REPO:bot-$TAG -n $NAMESPACE
-            # Deploy API with specific tag
-            kubectl set image deploy/press-api press-api=$REPO:api-$TAG -n $NAMESPACE
             # Deploy Mini App with specific tag
             kubectl set image deploy/gym-miniapp miniapp=$REPO:miniapp-$TAG -n $NAMESPACE
 
             kubectl rollout restart deploy/gym-bot -n $NAMESPACE
-            kubectl rollout restart deploy/press-api -n $NAMESPACE
             kubectl rollout restart deploy/gym-miniapp -n $NAMESPACE
 
             kubectl rollout status deploy/gym-bot -n $NAMESPACE
-            kubectl rollout status deploy/press-api -n $NAMESPACE
             kubectl rollout status deploy/gym-miniapp -n $NAMESPACE
 
             echo "Deployment complete!"

@@ -26,8 +26,6 @@ spec:
             valueFrom: { secretKeyRef: { name: bot-secrets, key: TOKEN } }
           - name: DB_URL
             valueFrom: { secretKeyRef: { name: bot-secrets, key: DB_URL } }
-          - name: NEIRO_API_URL
-            value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
         readinessProbe:
           httpGet: { path: /healthz, port: 8099 }
           initialDelaySeconds: 5

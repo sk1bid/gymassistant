@@ -37,8 +37,6 @@ spec:
           # Токен только для проверки подписи initData — наружу сервис не ходит.
           - name: MINIAPP_BOT_TOKEN
             valueFrom: { secretKeyRef: { name: miniapp-test-secrets, key: MINIAPP_BOT_TOKEN } }
-          - name: NEIRO_API_URL
-            value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
         readinessProbe:
           httpGet: { path: /healthz, port: 8099 }
           initialDelaySeconds: 5

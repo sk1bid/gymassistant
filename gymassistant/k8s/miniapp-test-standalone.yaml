@@ -63,8 +63,6 @@ spec:
           # Несовпадение даёт 401 «подпись initData неверна» — и ничего больше.
           - name: MINIAPP_BOT_TOKEN
             valueFrom: { secretKeyRef: { name: miniapp-test-secrets, key: MINIAPP_BOT_TOKEN } }
-          - name: NEIRO_API_URL
-            value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
         volumeMounts:
           # Те же три каталога, что Dockerfile.miniapp копирует в образ.
           - name: src-miniapp

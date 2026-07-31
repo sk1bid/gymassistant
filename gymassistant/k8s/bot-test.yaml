@@ -48,8 +48,6 @@ spec:
           # давал бы вечное 401. См. k8s/miniapp-test-standalone.yaml.
           - name: MINIAPP_URL
             value: "https://sk1bid.ru/gym-test/"
-          - name: NEIRO_API_URL
-            value: "http://press-api.gym-prod.svc.cluster.local:8000/predict"
       # Прокси-sidecar: копия из gym-bot, тот же secret ss-bot-config.
       - name: ss-client
         image: shadowsocks/shadowsocks-libev:latest
