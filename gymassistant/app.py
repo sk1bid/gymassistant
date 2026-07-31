@@ -102,7 +102,9 @@ async def start_health_server() -> None:
     app = web.Application()
     app.router.add_get("/healthz", healthz)
 
-    runner = web.AppRunner(app)
+    # access_log=None — иначе kubelet раз в 10 секунд пишет в лог строку об успешной
+    # пробе, и за сутки это ~8600 строк, в которых тонет всё остальное.
+    runner = web.AppRunner(app, access_log=None)
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", PORT).start()
     logging.info(f"проба готовности слушает :{PORT}/healthz")
