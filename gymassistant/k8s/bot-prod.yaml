@@ -19,6 +19,15 @@ spec:
         image: ghcr.io/sk1bid/gymassistant:bot-prod
         ports:
           - containerPort: 8080
+        # 200 отдаётся только после того, как отработал старт: проверена схема БД,
+        # загружены баннеры, запущен воркер отдыха (`_ready` в app.py). Без пробы
+        # kubelet считает контейнер готовым сразу, и упавший через две секунды под
+        # успевает погасить прошлый — выкатка рапортует успех, а бота нет.
+        readinessProbe:
+          httpGet: { path: /healthz, port: 8080 }
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
         env:
           - name: TOKEN
             valueFrom: { secretKeyRef: { name: bot-secrets, key: TOKEN } }

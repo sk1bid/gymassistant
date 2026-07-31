@@ -40,6 +40,13 @@ ADMIN_IDS = [int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id]
 
 MINIAPP_URL = os.getenv("MINIAPP_URL", "")
 
+# Готовность для kubelet. Без пробы контейнер считается готовым сразу после запуска
+# процесса, и бот, падающий на старте (например, на отставшей схеме БД), успевает
+# засчитаться доступной репликой, погасить прошлый под и получить «successfully
+# rolled out» — а бота нет. Флаг поднимается последним шагом старта, когда база
+# проверена, баннеры загружены и воркер отдыха запущен.
+_ready = False
+
 dp = Dispatcher()
 # Роутеры Mini App идут первыми: /app и кнопка «Закончить отдых» не должны утонуть
 # в общих обработчиках старого меню. Кнопку отдыха новый роутер берёт только вне FSM,
@@ -79,6 +86,26 @@ async def on_shutdown(bot: Bot):
     logging.info("Выключаем вебхук...")
     with contextlib.suppress(Exception):
         await bot.delete_webhook(drop_pending_updates=False)
+
+
+async def start_health_server() -> None:
+    """
+    Крошечный сервер только под `/healthz` — для режима поллинга, где своего HTTP
+    нет вовсе (в режиме вебхука эту роль играет сам webhook-app).
+
+    503 до конца старта — это и есть смысл затеи: пока бот не поднялся, реплика
+    не должна считаться доступной.
+    """
+    async def healthz(_request: web.Request) -> web.Response:
+        return web.Response(status=200 if _ready else 503, text="ok" if _ready else "starting")
+
+    app = web.Application()
+    app.router.add_get("/healthz", healthz)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "0.0.0.0", PORT).start()
+    logging.info(f"проба готовности слушает :{PORT}/healthz")
 
 
 async def init_app(bot: Bot) -> web.Application:
@@ -127,6 +154,7 @@ async def main():
 
     if os.getenv("USE_POLLING", "False").lower() == "true":
         logging.info("Starting bot in POLLING mode...")
+        await start_health_server()
         await bot.delete_webhook(drop_pending_updates=True)
         dp.startup.register(on_startup_polling)
         await dp.start_polling(bot)
@@ -151,6 +179,10 @@ async def on_startup_polling(bot: Bot):
     await start_rest_notifier(bot)
     with contextlib.suppress(Exception):
         await setup_menu_button(bot)
+
+    # База проверена, воркер отдыха жив — только теперь реплика считается доступной.
+    global _ready
+    _ready = True
 
     for user in bot.my_admins_list:
         with contextlib.suppress(Exception):

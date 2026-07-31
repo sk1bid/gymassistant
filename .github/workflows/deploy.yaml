@@ -98,6 +98,11 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: 2222
+          # Дефолтные 10 минут кончались раньше, чем kubectl переставал ждать поды,
+          # и шаг падал с «Run Command Timeout» — то есть без единого слова о том,
+          # что именно не поднялось. Теперь таймауты стоят внутри скрипта, на каждом
+          # ожидании отдельно, а этот — только внешняя страховка.
+          command_timeout: 20m
           script: |
             set -euo pipefail
             REPO="ghcr.io/${{ github.repository }}"
@@ -123,15 +128,54 @@ jobs:
             kubectl apply -f gymassistant/k8s/bot-prod.yaml -n $NAMESPACE
             kubectl apply -f gymassistant/k8s/miniapp-prod.yaml -n $NAMESPACE
 
+            # Schema first, pods second. The app refuses to start on a database that
+            # lags the models (create_db in database/engine.py), so shipping the image
+            # before the migration means two CrashLoopBackOff pods and a deploy that
+            # waits for them until it times out — which is exactly what aecce59 did.
+            # The Job runs the freshly built image: the running pods carry only the
+            # migrations of their own commit.
+            echo "Running migrations"
+            kubectl delete job gym-migrate -n $NAMESPACE --ignore-not-found --wait=true
+            sed "s|__IMAGE__|$REPO:bot-$TAG|" gymassistant/k8s/migrate-job.yaml \
+              | kubectl apply -n $NAMESPACE -f -
+
+            # Not `kubectl wait --for=condition=complete`: on a failed job that waits
+            # out the whole timeout instead of reporting the failure. Poll both.
+            STATE=""
+            for _ in $(seq 60); do
+              STATE=$(kubectl get job gym-migrate -n $NAMESPACE \
+                -o jsonpath='{.status.conditions[?(@.status=="True")].type}' || true)
+              if [ "$STATE" = "Complete" ] || [ "$STATE" = "Failed" ]; then
+                break
+              fi
+              sleep 5
+            done
+
+            kubectl logs job/gym-migrate -n $NAMESPACE --tail=40 || true
+            if [ "$STATE" != "Complete" ]; then
+              echo "Migrations did not finish (state: ${STATE:-timeout}); nothing was deployed"
+              kubectl describe job gym-migrate -n $NAMESPACE | tail -20 || true
+              exit 1
+            fi
+
             # Deploy Bot with specific tag
             kubectl set image deploy/gym-bot aiogram-bot=$REPO:bot-$TAG -n $NAMESPACE
             # Deploy Mini App with specific tag
             kubectl set image deploy/gym-miniapp miniapp=$REPO:miniapp-$TAG -n $NAMESPACE
 
-            kubectl rollout restart deploy/gym-bot -n $NAMESPACE
-            kubectl rollout restart deploy/gym-miniapp -n $NAMESPACE
+            # No `rollout restart` here: TAG carries the commit sha, so `set image`
+            # already rolls the pods. The extra restart started a second rollout on
+            # top of the first, and `rollout status` then watched two waves.
 
-            kubectl rollout status deploy/gym-bot -n $NAMESPACE
-            kubectl rollout status deploy/gym-miniapp -n $NAMESPACE
+            # Bounded waits, and the pod's own log on failure — a bare timeout says
+            # nothing about the reason.
+            for DEPLOY in gym-bot gym-miniapp; do
+              if ! kubectl rollout status deploy/$DEPLOY -n $NAMESPACE --timeout=240s; then
+                echo "$DEPLOY did not roll out:"
+                kubectl logs deploy/$DEPLOY -n $NAMESPACE --all-containers --tail=40 || true
+                kubectl describe deploy/$DEPLOY -n $NAMESPACE | tail -20 || true
+                exit 1
+              fi
+            done
 
             echo "Deployment complete!"

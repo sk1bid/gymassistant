@@ -1,0 +1,35 @@
+# Миграции базы: отдельный Job, который CI запускает ПЕРЕД сменой образов.
+#
+# Почему не на старте приложения: бот и Mini App катятся параллельно и работают
+# с одной базой — два alembic'а разом это гонка, а alembic собственной блокировки
+# не держит. Один Job снимает вопрос.
+#
+# Почему не руками из прод-пода: в его образе лежат миграции его же коммита,
+# а накатывать надо как раз новые. Здесь образ — тот, что только что собран.
+#
+# __IMAGE__ подставляет деплой-скрипт (.github/workflows/deploy.yaml): Job
+# неизменяем, поэтому скрипт сначала удаляет прошлый, потом применяет этот.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gym-migrate
+spec:
+  # Повтор бессмыслен: alembic падает по причине (конфликт схемы, недоступная база),
+  # а не от невезения. Пусть падает сразу и роняет деплой, пока образы не поехали.
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: alembic
+          image: __IMAGE__
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "cd /app && alembic upgrade head"]
+          env:
+            # Единственное, что нужно alembic/env.py. POSTGRES_* не нужны: DB_URL
+            # в секрете уже собран целиком.
+            - name: DB_URL
+              valueFrom: { secretKeyRef: { name: bot-secrets, key: DB_URL } }
+      imagePullSecrets:
+        - name: ghcr-auth
