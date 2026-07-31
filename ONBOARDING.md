@@ -156,10 +156,11 @@ Namespace `gym-prod`, что сейчас запущено:
 видны по обычному refresh, без пересборки образа. Правки Python:
 `kubectl rollout restart deploy/gym-miniapp-test -n gym-prod`.
 
-Образ тестового пода закреплён на теге, который уже лежит в containerd узла.
-Тянуть образы **нельзя**: настроенный на узле registry-mirror `ghcr.mirror.lcr.io`
-не резолвится, любой pull кончается `ImagePullBackOff`. Импорт нового образа требует
-`k3s ctr images import` и пароля sudo.
+Образ тестового пода закреплён на теге, который уже лежит в containerd узла:
+registry-mirror `ghcr.mirror.lcr.io`, прописанный в `/etc/rancher/k3s/registries.yaml`,
+не резолвится. На выкатку это не влияет — containerd после мирора идёт в сам
+`ghcr.io`, и деплой `aecce59` образы вытянул штатно, — но `ctr images pull` руками
+в мирор упрётся.
 
 Доступ к кластеру: `export KUBECONFIG=~/.kube/config` (файл `/etc/rancher/k3s/k3s.yaml`
 читается только root).
@@ -308,25 +309,29 @@ Material 3 на зелёно-нейтральном сиде, Telegram выби�
 иерархия. Модификатор `.compact` остался только для форм настройки; его кнопки
 подняты с 46 до 48 px — 46 было ниже минимальной цели касания.
 
-### Что осталось сделать руками
+### Как накатывать миграции на прод
 
-Две миграции **не применены** — доступ к БД из-под ассистента закрыт классификатором:
+Из прод-пода не выйдет: в образе лежат только те миграции, что были в его коммите,
+а накатывать надо как раз новые. Гоняем с хоста через `postgres-nodeport` (30432),
+интерпретатором из `.venv-bot`:
 
 ```bash
-kubectl exec -n gym-prod deploy/gym-bot-test -c aiogram-bot -- \
-  sh -c 'cd /app && alembic current'
+cd ~/gymassistant/gymassistant && export KUBECONFIG=~/.kube/config && DB_URL="$(kubectl get secret bot-secrets -n gym-prod -o jsonpath='{.data.DB_URL}' | base64 -d | sed -E 's#@[^/]+/#@127.0.0.1:30432/#')" ./.venv-bot/bin/alembic current
 ```
 
-Если `alembic_version` пуст (БД заводилась через `create_all`), сперва `alembic
-stamp a1b2c3d4e5f6`, затем `alembic upgrade head`. Применяются `b2c4d6e8f0a1`
-(снос тихого режима) и `c3d5e7f9a1b2` (`set.skipped`). **До этого кнопка «Не смог
-этот подход» будет отвечать ошибкой** — остальное работает.
+`sed` подменяет внутрикластерный хост на nodePort. Дальше та же строка с `upgrade
+head`. Если `alembic current` пуст (БД заводилась через `create_all`) — сперва
+`stamp` на ревизию, которой схема фактически соответствует.
 
 ---
 
 ## 10. Открытые вопросы
 
-* Ветка не влита в `main` и **не выкачена на прод**. Прод работает на `d8bfbd1`.
+* У `gym-bot` нет readinessProbe, поэтому `kubectl rollout status` врёт: контейнер
+  считается готовым сразу после запуска, и падение через пару секунд (как на
+  выкатке `aecce59`, где не хватало миграций) успевает погасить старый под и
+  отрапортовать «successfully rolled out». У `gym-miniapp` проба `/healthz` есть —
+  там старый под в такой ситуации остаётся жив. Пробу боту стоит завести.
 * Правка nginx (`location /gym-test/`) сделана только на сервере; в репозитории
   лежит расходящаяся копия.
 * Middleware с замерами времени включён постоянно. Если он не нужен — убирается
